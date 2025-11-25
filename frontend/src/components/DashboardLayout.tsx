@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Avatar, Dropdown, Typography, MenuProps } from 'antd';
+import { Layout, Menu, Avatar, Dropdown, Typography } from 'antd';
+import type { MenuProps } from 'antd';
 import {
   DashboardOutlined,
   ProjectOutlined,
@@ -11,6 +12,7 @@ import {
   UserOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -27,6 +29,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const location = useLocation();
   const { user, clearAuth } = useAuthStore();
 
+  const isAdmin = user?.role === 'admin';
+
   const menuItems: MenuProps['items'] = [
     {
       key: '/dashboard',
@@ -38,11 +42,18 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       icon: <ProjectOutlined />,
       label: '專案管理',
     },
-    {
-      key: '/members',
-      icon: <TeamOutlined />,
-      label: '成員管理',
-    },
+    ...(isAdmin ? [
+      {
+        key: '/admin/users',
+        icon: <TeamOutlined />,
+        label: '成員管理',
+      },
+      {
+        key: '/admin/activity-logs',
+        icon: <FileTextOutlined />,
+        label: '操作紀錄',
+      },
+    ] : []),
     {
       key: '/reports',
       icon: <BarChartOutlined />,

@@ -72,3 +72,6 @@ export const authorize = (...roles: string[]) => {
     next();
   };
 };
+
+// Alias for authorize
+export const requireRole = (roles: string[]) => authorize(...roles);

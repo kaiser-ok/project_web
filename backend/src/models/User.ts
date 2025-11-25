@@ -8,6 +8,7 @@ interface UserAttributes {
   email: string;
   passwordHash?: string;
   fullName?: string;
+  alias?: string;
   role: 'admin' | 'manager' | 'member' | 'viewer';
   googleId?: string;
   avatar?: string;
@@ -25,6 +26,7 @@ class User extends Model<UserAttributes, UserCreationAttributes> implements User
   public email!: string;
   public passwordHash?: string;
   public fullName?: string;
+  public alias?: string;
   public role!: 'admin' | 'manager' | 'member' | 'viewer';
   public googleId?: string;
   public avatar?: string;
@@ -81,6 +83,10 @@ User.init(
     },
     fullName: {
       type: DataTypes.STRING(200),
+      allowNull: true
+    },
+    alias: {
+      type: DataTypes.STRING(100),
       allowNull: true
     },
     role: {

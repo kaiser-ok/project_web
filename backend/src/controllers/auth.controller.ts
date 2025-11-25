@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User';
 import { AppError } from '../middleware/error.middleware';
 import { AuthRequest } from '../middleware/auth.middleware';
+import { logActivity, ActivityActions, EntityTypes } from '../services/activityLog.service';
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -88,6 +89,17 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
     const accessToken = generateToken(user.id, user.email, user.role);
     const refreshToken = generateRefreshToken(user.id);
 
+    // Log login activity
+    await logActivity({
+      userId: user.id,
+      action: ActivityActions.LOGIN,
+      entityType: EntityTypes.USER,
+      entityId: user.id,
+      entityName: user.username,
+      details: { method: 'google' },
+      req
+    });
+
     res.json({
       success: true,
       data: {
@@ -171,7 +183,18 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
 // Logout
 export const logout = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    // In a production app, you might want to blacklist the token
+    // Log logout activity
+    if (req.user) {
+      await logActivity({
+        userId: req.user.id,
+        action: ActivityActions.LOGOUT,
+        entityType: EntityTypes.USER,
+        entityId: req.user.id,
+        entityName: req.user.email,
+        req
+      });
+    }
+
     res.json({
       success: true,
       message: 'Logged out successfully'

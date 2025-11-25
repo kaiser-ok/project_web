@@ -6,11 +6,15 @@ import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import { sequelize } from './config/database';
+import './models'; // Import models to register associations
 import authRoutes from './routes/auth.routes';
 import projectRoutes from './routes/project.routes';
 import taskRoutes from './routes/task.routes';
 import memberRoutes from './routes/member.routes';
 import userRoutes from './routes/user.routes';
+import financeRoutes from './routes/finance.routes';
+import workHourRoutes from './routes/workHour.routes';
+import activityLogRoutes from './routes/activityLog.routes';
 import { errorHandler } from './middleware/error.middleware';
 
 // Load environment variables
@@ -56,6 +60,9 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/members', memberRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/finances', financeRoutes);
+app.use('/api/work-hours', workHourRoutes);
+app.use('/api/activity-logs', activityLogRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {

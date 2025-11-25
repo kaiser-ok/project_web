@@ -2,6 +2,8 @@
 
 一個基於 React + Node.js + PostgreSQL 的現代化專案管理系統，支援 Google OAuth 認證。
 
+[![GitHub](https://img.shields.io/badge/GitHub-kaiser--ok%2Fproject__web-blue?logo=github)](https://github.com/kaiser-ok/project_web)
+
 ## 功能特色
 
 - 🔐 **Google OAuth 認證** - 使用 Google 帳號快速登入
@@ -41,7 +43,7 @@
 ### 1. 複製專案
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/kaiser-ok/project_web.git
 cd project_web
 ```
 

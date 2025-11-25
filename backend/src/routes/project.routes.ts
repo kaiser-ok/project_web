@@ -4,7 +4,8 @@ import {
   getProject,
   createProject,
   updateProject,
-  deleteProject
+  deleteProject,
+  getNextProjectCode
 } from '../controllers/project.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 
@@ -13,6 +14,7 @@ const router = Router();
 // All routes require authentication
 router.use(authenticate);
 
+router.get('/next-code', getNextProjectCode);
 router.get('/', getProjects);
 router.get('/:id', getProject);
 router.post('/', authorize('admin', 'manager'), createProject);
