@@ -6,10 +6,12 @@ import ProjectFinance from './ProjectFinance';
 import ProjectWorkHour from './ProjectWorkHour';
 import TaskWorkHour from './TaskWorkHour';
 import ActivityLog from './ActivityLog';
+import ProjectReport from './ProjectReport';
 
 // Define associations
 User.hasMany(ActivityLog, { foreignKey: 'userId', as: 'activityLogs' });
 ActivityLog.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
 Project.hasMany(ProjectTask, { foreignKey: 'projectId', as: 'tasks' });
 ProjectTask.belongsTo(Project, { foreignKey: 'projectId', as: 'project' });
 
@@ -21,6 +23,9 @@ ProjectFinance.belongsTo(Project, { foreignKey: 'projectId', as: 'project' });
 
 Project.hasMany(ProjectWorkHour, { foreignKey: 'projectId', as: 'workHours' });
 ProjectWorkHour.belongsTo(Project, { foreignKey: 'projectId', as: 'project' });
+
+Project.hasMany(ProjectReport, { foreignKey: 'projectId', as: 'reports' });
+ProjectReport.belongsTo(Project, { foreignKey: 'projectId', as: 'project' });
 
 ProjectMember.hasMany(ProjectWorkHour, { foreignKey: 'memberId', as: 'workHours' });
 ProjectWorkHour.belongsTo(ProjectMember, { foreignKey: 'memberId', as: 'member' });
@@ -36,5 +41,6 @@ export {
   ProjectFinance,
   ProjectWorkHour,
   TaskWorkHour,
-  ActivityLog
+  ActivityLog,
+  ProjectReport
 };

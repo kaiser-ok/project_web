@@ -113,6 +113,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         projectId: t.projectId,
         projectName: projects.find(p => p.id === t.projectId)?.projectName,
         endDate: t.endDate,
+        estimatedHours: t.estimatedHours,
         progress: t.progress,
         status: t.status
       }));
@@ -130,6 +131,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         projectId: t.projectId,
         projectName: projects.find(p => p.id === t.projectId)?.projectName,
         endDate: t.endDate,
+        estimatedHours: t.estimatedHours,
         progress: t.progress,
         status: t.status
       }));
@@ -154,6 +156,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
           projectName: projects.find(p => p.id === t.projectId)?.projectName,
           startDate: t.startDate,
           endDate: t.endDate,
+          estimatedHours: t.estimatedHours,
           progress: t.progress,
           status: t.status
         })),

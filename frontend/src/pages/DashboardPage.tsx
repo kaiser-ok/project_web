@@ -72,6 +72,7 @@ interface TaskInfo {
   projectName: string;
   startDate: string;
   endDate: string;
+  estimatedHours: number; // 必填欄位
   progress: number;
   status: string;
 }
@@ -122,6 +123,13 @@ const taskStatusConfig: Record<string, { label: string; color: string }> = {
   completed: { label: '已完成', color: 'success' },
   delayed: { label: '延遲', color: 'error' },
 };
+
+const statusOptions = [
+  { label: '未開始', value: 'not_started', color: '#d9d9d9' },
+  { label: '進行中', value: 'in_progress', color: '#1890ff' },
+  { label: '已完成', value: 'completed', color: '#52c41a' },
+  { label: '延遲', value: 'delayed', color: '#ff4d4f' },
+];
 
 const roleColors: Record<string, string> = {
   PPM: 'red',
@@ -217,14 +225,36 @@ export default function DashboardPage() {
     if (!selectedTask?.id) return;
     try {
       const values = await workHourForm.validateFields();
+
+      // Add work hour
       await api.post(`/task-work-hours/task/${selectedTask.id}`, {
         ...values,
         workDate: values.workDate.format('YYYY-MM-DD'),
       });
+
       message.success('工時已記錄');
+
+      // Refresh work hours
       await fetchTaskWorkHours(selectedTask.id);
+
+      // Auto-update task status if it's not started
+      if (selectedTask.status === 'not_started') {
+        try {
+          await api.put(`/tasks/${selectedTask.id}`, {
+            ...selectedTask,
+            status: 'in_progress'
+          });
+          message.info('任務狀態已自動更新為「進行中」');
+          setSelectedTask({ ...selectedTask, status: 'in_progress' });
+          fetchDashboard(); // Refresh dashboard
+        } catch (error) {
+          console.error('Failed to auto-update task status:', error);
+        }
+      }
+
       workHourForm.resetFields();
       workHourForm.setFieldsValue({
+        workerName: getUserDisplayName(),
         workDate: dayjs(),
       });
     } catch (error) {
@@ -241,9 +271,144 @@ export default function DashboardPage() {
       if (selectedTask?.id) {
         await fetchTaskWorkHours(selectedTask.id);
       }
+      fetchDashboard(); // Refresh dashboard
     } catch (error) {
       console.error('Failed to delete work hour:', error);
       message.error('刪除工時失敗');
+    }
+  };
+
+  // Calculate suggested progress based on hours
+  const calculateSuggestedProgress = (estimatedHours?: number, actualHours?: number): number => {
+    if (!estimatedHours || estimatedHours === 0 || !actualHours) return 0;
+    const percentage = Math.round((actualHours / estimatedHours) * 100);
+    return Math.min(percentage, 100);
+  };
+
+  // Get actual hours for selected task
+  const getTaskActualHours = (): number => {
+    return taskWorkHours.reduce((sum, wh) => sum + Number(wh.hours), 0);
+  };
+
+  // Update task status and progress
+  const handleUpdateTask = async () => {
+    if (!selectedTask?.id) return;
+
+    // Check if progress is 100% but status is not completed
+    if (selectedTask.progress === 100 && selectedTask.status !== 'completed') {
+      Modal.confirm({
+        title: '進度已達 100%',
+        content: '是否要將任務狀態改為「已完成」？',
+        okText: '是，標記為已完成',
+        cancelText: '否，保持目前狀態',
+        onOk: async () => {
+          try {
+            await api.put(`/tasks/${selectedTask.id}`, {
+              ...selectedTask,
+              status: 'completed',
+              progress: 100
+            });
+            message.success('任務已標記為已完成');
+            setSelectedTask({ ...selectedTask, status: 'completed' });
+            fetchDashboard();
+          } catch (error) {
+            console.error('Failed to update task:', error);
+            message.error('更新任務失敗');
+          }
+        },
+        onCancel: async () => {
+          try {
+            await api.put(`/tasks/${selectedTask.id}`, {
+              ...selectedTask,
+              status: selectedTask.status,
+              progress: selectedTask.progress
+            });
+            message.success('任務已更新');
+            fetchDashboard();
+          } catch (error) {
+            console.error('Failed to update task:', error);
+            message.error('更新任務失敗');
+          }
+        }
+      });
+      return;
+    }
+
+    try {
+      await api.put(`/tasks/${selectedTask.id}`, {
+        ...selectedTask,
+        status: selectedTask.status,
+        progress: selectedTask.progress
+      });
+      message.success('任務已更新');
+      fetchDashboard();
+    } catch (error) {
+      console.error('Failed to update task:', error);
+      message.error('更新任務失敗');
+    }
+  };
+
+  // Apply suggested progress with auto-status update
+  const handleApplySuggestedProgress = () => {
+    if (!selectedTask) return;
+
+    const suggestedProgress = calculateSuggestedProgress(
+      selectedTask.estimatedHours,
+      getTaskActualHours()
+    );
+
+    // If suggested progress is 100%, ask if user wants to mark as completed
+    if (suggestedProgress === 100 && selectedTask.status !== 'completed') {
+      Modal.confirm({
+        title: '建議進度已達 100%',
+        content: '是否要同時將任務狀態改為「已完成」？',
+        okText: '是，標記為已完成',
+        cancelText: '否，只更新進度',
+        onOk: () => {
+          setSelectedTask({
+            ...selectedTask,
+            progress: suggestedProgress,
+            status: 'completed'
+          });
+          message.success('已套用建議進度並更新狀態為已完成');
+        },
+        onCancel: () => {
+          setSelectedTask({ ...selectedTask, progress: suggestedProgress });
+          message.success('已套用建議進度');
+        }
+      });
+    } else {
+      setSelectedTask({ ...selectedTask, progress: suggestedProgress });
+      message.success('已套用建議進度');
+    }
+  };
+
+  // Handle status change with progress sync
+  const handleStatusChange = (newStatus: 'not_started' | 'in_progress' | 'completed' | 'delayed') => {
+    if (!selectedTask) return;
+
+    // If changing to completed and progress is not 100%, ask if user wants to set progress to 100%
+    if (newStatus === 'completed' && selectedTask.progress !== 100) {
+      Modal.confirm({
+        title: '任務即將標記為已完成',
+        content: `目前進度為 ${selectedTask.progress}%，是否要同時將進度設為 100%？`,
+        okText: '是，設為 100%',
+        cancelText: '否，保持目前進度',
+        onOk: () => {
+          setSelectedTask({
+            ...selectedTask,
+            status: newStatus,
+            progress: 100
+          });
+          message.success('已更新狀態為已完成，進度設為 100%');
+        },
+        onCancel: () => {
+          setSelectedTask({ ...selectedTask, status: newStatus });
+          message.success('已更新狀態為已完成');
+        }
+      });
+    } else {
+      setSelectedTask({ ...selectedTask, status: newStatus });
     }
   };
 
@@ -564,11 +729,85 @@ export default function DashboardPage() {
           open={workHourModalVisible}
           onCancel={() => setWorkHourModalVisible(false)}
           footer={null}
-          width={650}
+          width={800}
         >
           <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
             專案：{selectedTask?.projectName}
           </Text>
+
+          {/* Task Progress and Status Control */}
+          {selectedTask && (
+            <Card size="small" style={{ marginBottom: 16, background: '#f5f5f5' }}>
+              <Row gutter={[16, 16]}>
+                <Col span={12}>
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <Text strong>工時統計</Text>
+                    <Row gutter={8}>
+                      <Col span={12}>
+                        <Text type="secondary">預計工時：</Text>
+                        <Text strong>{selectedTask.estimatedHours || '-'} 小時</Text>
+                      </Col>
+                      <Col span={12}>
+                        <Text type="secondary">實際工時：</Text>
+                        <Text strong type="success">{getTaskActualHours().toFixed(1)} 小時</Text>
+                      </Col>
+                    </Row>
+                    {selectedTask.estimatedHours && (
+                      <div>
+                        <Text type="secondary">建議進度：</Text>
+                        <Text strong type="warning">
+                          {calculateSuggestedProgress(selectedTask.estimatedHours, getTaskActualHours())}%
+                        </Text>
+                        {getTaskActualHours() > 0 && (
+                          <Button
+                            size="small"
+                            type="link"
+                            onClick={handleApplySuggestedProgress}
+                          >
+                            套用建議
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </Space>
+                </Col>
+                <Col span={12}>
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <Text strong>任務狀態與進度</Text>
+                    <Space>
+                      <Text>狀態：</Text>
+                      <Select
+                        value={selectedTask.status}
+                        onChange={handleStatusChange}
+                        style={{ width: 120 }}
+                      >
+                        {statusOptions.map(opt => (
+                          <Select.Option key={opt.value} value={opt.value}>
+                            <span style={{ color: opt.color }}>{opt.label}</span>
+                          </Select.Option>
+                        ))}
+                      </Select>
+                    </Space>
+                    <Space>
+                      <Text>進度：</Text>
+                      <InputNumber
+                        value={selectedTask.progress}
+                        onChange={v => setSelectedTask({ ...selectedTask, progress: v || 0 })}
+                        min={0}
+                        max={100}
+                        style={{ width: 80 }}
+                      />
+                      <Text>%</Text>
+                      <Button type="primary" size="small" onClick={handleUpdateTask}>
+                        更新
+                      </Button>
+                    </Space>
+                    <Progress percent={selectedTask.progress} status="active" />
+                  </Space>
+                </Col>
+              </Row>
+            </Card>
+          )}
 
           <Form
             form={workHourForm}
@@ -654,7 +893,7 @@ export default function DashboardPage() {
                 <Table.Summary.Cell index={0}><Text strong>小計</Text></Table.Summary.Cell>
                 <Table.Summary.Cell index={1}></Table.Summary.Cell>
                 <Table.Summary.Cell index={2}>
-                  <Text strong>{taskWorkHours.reduce((sum, wh) => sum + Number(wh.hours), 0)} h</Text>
+                  <Text strong>{getTaskActualHours().toFixed(1)} h</Text>
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={3} colSpan={2}></Table.Summary.Cell>
               </Table.Summary.Row>

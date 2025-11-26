@@ -24,6 +24,12 @@ router.get('/project/:projectId', async (req: AuthRequest, res: Response) => {
 // Create task
 router.post('/', async (req: AuthRequest, res: Response) => {
   try {
+    // 驗證預計工時必填
+    if (!req.body.estimatedHours || req.body.estimatedHours <= 0) {
+      res.status(400).json({ error: '預計工時為必填欄位，且必須大於 0' });
+      return;
+    }
+
     const task = await ProjectTask.create(req.body);
     res.status(201).json({ success: true, data: task });
   } catch (error) {
@@ -41,6 +47,13 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
       res.status(404).json({ error: 'Task not found' });
       return;
     }
+
+    // 如果更新包含預計工時，驗證其有效性
+    if (req.body.estimatedHours !== undefined && req.body.estimatedHours <= 0) {
+      res.status(400).json({ error: '預計工時必須大於 0' });
+      return;
+    }
+
     await task.update(req.body);
     res.json({ success: true, data: task });
   } catch (error) {

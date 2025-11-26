@@ -9,6 +9,7 @@ interface ProjectTaskAttributes {
   startDate?: Date;
   endDate?: Date;
   durationDays?: number;
+  estimatedHours: number; // 必填欄位
   progress: number;
   status: 'not_started' | 'in_progress' | 'completed' | 'delayed';
   notes?: string;
@@ -27,6 +28,7 @@ class ProjectTask extends Model<ProjectTaskAttributes, ProjectTaskCreationAttrib
   public startDate?: Date;
   public endDate?: Date;
   public durationDays?: number;
+  public estimatedHours!: number; // 必填欄位
   public progress!: number;
   public status!: 'not_started' | 'in_progress' | 'completed' | 'delayed';
   public notes?: string;
@@ -69,6 +71,12 @@ ProjectTask.init(
     durationDays: {
       type: DataTypes.INTEGER,
       allowNull: true
+    },
+    estimatedHours: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 1,
+      comment: '預計工時（小時）'
     },
     progress: {
       type: DataTypes.INTEGER,

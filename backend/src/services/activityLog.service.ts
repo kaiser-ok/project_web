@@ -63,6 +63,11 @@ export const ActivityActions = {
   // Work Hour
   WORKHOUR_UPDATE: 'workhour_update',
 
+  // Report
+  REPORT_CREATE: 'report_create',
+  REPORT_UPDATE: 'report_update',
+  REPORT_DELETE: 'report_delete',
+
   // User Management
   USER_UPDATE: 'user_update',
   USER_ROLE_CHANGE: 'user_role_change'
@@ -74,5 +79,6 @@ export const EntityTypes = {
   TASK: 'task',
   MEMBER: 'member',
   FINANCE: 'finance',
-  WORKHOUR: 'workhour'
+  WORKHOUR: 'workhour',
+  PROJECT_REPORT: 'project_report'
 };
