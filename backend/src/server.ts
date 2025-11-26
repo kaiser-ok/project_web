@@ -15,6 +15,8 @@ import userRoutes from './routes/user.routes';
 import financeRoutes from './routes/finance.routes';
 import workHourRoutes from './routes/workHour.routes';
 import activityLogRoutes from './routes/activityLog.routes';
+import dashboardRoutes from './routes/dashboard.routes';
+import taskWorkHourRoutes from './routes/taskWorkHour.routes';
 import { errorHandler } from './middleware/error.middleware';
 
 // Load environment variables
@@ -63,6 +65,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/finances', financeRoutes);
 app.use('/api/work-hours', workHourRoutes);
 app.use('/api/activity-logs', activityLogRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/task-work-hours', taskWorkHourRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {

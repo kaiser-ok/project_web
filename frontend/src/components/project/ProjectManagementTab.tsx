@@ -15,17 +15,27 @@ import {
   Typography,
   Row,
   Col,
+  Modal,
+  Form,
+  Tooltip,
+  Tag,
 } from 'antd';
 import {
   PlusOutlined,
   DeleteOutlined,
   SaveOutlined,
+  ClockCircleOutlined,
+  FieldTimeOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import api from '../../lib/axios';
+import { useAuthStore } from '../../store/useAuthStore';
 
 const { Text } = Typography;
+
+// PM roles that can select other workers
+const pmRoles = ['PPM', 'PMO', 'PD', 'PM'];
 
 interface Props {
   projectId?: number;
@@ -89,6 +99,30 @@ interface WorkHour {
   notes?: string;
 }
 
+interface TaskWorkHour {
+  id?: number;
+  taskId: number;
+  workerName: string;
+  workDate: string;
+  hours: number;
+  description?: string;
+}
+
+interface TaskWorkHourSummary {
+  taskId: number;
+  taskName: string;
+  assignee?: string;
+  totalHours: number;
+  byWorker: Record<string, number>;
+  entries: number;
+}
+
+interface WorkHourSummaryData {
+  tasks: TaskWorkHourSummary[];
+  overallByWorker: Record<string, number>;
+  totalProjectHours: number;
+}
+
 const roleOptions = [
   { label: 'PPM', value: 'PPM' },
   { label: 'PMO', value: 'PMO' },
@@ -129,6 +163,7 @@ function generateMonthColumns(startDate?: string, endDate?: string): string[] {
 }
 
 export default function ProjectManagementTab({ projectId, plannedStartDate, plannedEndDate }: Props) {
+  const { user } = useAuthStore();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [finances, setFinances] = useState<Finance[]>([]);
@@ -139,8 +174,25 @@ export default function ProjectManagementTab({ projectId, plannedStartDate, plan
   const [savingMembers, setSavingMembers] = useState(false);
   const [savingFinances, setSavingFinances] = useState(false);
   const [savingWorkHours, setSavingWorkHours] = useState(false);
+  const [taskWorkHourModalVisible, setTaskWorkHourModalVisible] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [taskWorkHours, setTaskWorkHours] = useState<TaskWorkHour[]>([]);
+  const [taskWorkHourSummary, setTaskWorkHourSummary] = useState<WorkHourSummaryData | null>(null);
+  const [taskWorkHourForm] = Form.useForm();
 
   const months = generateMonthColumns(plannedStartDate, plannedEndDate);
+
+  // Get current user's display name
+  const getCurrentUserDisplayName = () => {
+    return user?.alias || user?.fullName || user?.username || '';
+  };
+
+  // Check if current user has PM role in this project
+  const isPM = (() => {
+    const userDisplayName = getCurrentUserDisplayName();
+    const userMember = members.find(m => m.memberName === userDisplayName);
+    return userMember ? pmRoles.includes(userMember.role.toUpperCase()) : false;
+  })();
 
   // Fetch system users for selection
   const fetchSystemUsers = useCallback(async () => {
@@ -180,10 +232,87 @@ export default function ProjectManagementTab({ projectId, plannedStartDate, plan
     }
   }, [projectId]);
 
+  // Fetch task work hours summary
+  const fetchTaskWorkHourSummary = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      const response = await api.get(`/task-work-hours/project/${projectId}/summary`);
+      setTaskWorkHourSummary(response.data?.data || null);
+    } catch (error) {
+      console.error('Failed to fetch task work hour summary:', error);
+    }
+  }, [projectId]);
+
+  // Fetch work hours for a specific task
+  const fetchTaskWorkHours = async (taskId: number) => {
+    try {
+      const response = await api.get(`/task-work-hours/task/${taskId}`);
+      setTaskWorkHours(response.data?.data || []);
+    } catch (error) {
+      console.error('Failed to fetch task work hours:', error);
+    }
+  };
+
+  // Open work hour modal for a task
+  const openTaskWorkHourModal = async (task: Task) => {
+    if (!task.id) {
+      message.warning('請先儲存任務後再記錄工時');
+      return;
+    }
+    setSelectedTask(task);
+    await fetchTaskWorkHours(task.id);
+    taskWorkHourForm.resetFields();
+    // Default to current user's name, PM can change it
+    taskWorkHourForm.setFieldsValue({
+      workerName: getCurrentUserDisplayName(),
+      workDate: dayjs(),
+    });
+    setTaskWorkHourModalVisible(true);
+  };
+
+  // Add work hour entry
+  const handleAddTaskWorkHour = async () => {
+    if (!selectedTask?.id) return;
+    try {
+      const values = await taskWorkHourForm.validateFields();
+      await api.post(`/task-work-hours/task/${selectedTask.id}`, {
+        ...values,
+        workDate: values.workDate.format('YYYY-MM-DD'),
+      });
+      message.success('工時已記錄');
+      await fetchTaskWorkHours(selectedTask.id);
+      await fetchTaskWorkHourSummary();
+      taskWorkHourForm.resetFields();
+      taskWorkHourForm.setFieldsValue({
+        workerName: getCurrentUserDisplayName(),
+        workDate: dayjs(),
+      });
+    } catch (error) {
+      console.error('Failed to add work hour:', error);
+      message.error('記錄工時失敗');
+    }
+  };
+
+  // Delete work hour entry
+  const handleDeleteTaskWorkHour = async (id: number) => {
+    try {
+      await api.delete(`/task-work-hours/${id}`);
+      message.success('工時已刪除');
+      if (selectedTask?.id) {
+        await fetchTaskWorkHours(selectedTask.id);
+      }
+      await fetchTaskWorkHourSummary();
+    } catch (error) {
+      console.error('Failed to delete work hour:', error);
+      message.error('刪除工時失敗');
+    }
+  };
+
   useEffect(() => {
     fetchSystemUsers();
     fetchData();
-  }, [fetchData, fetchSystemUsers]);
+    fetchTaskWorkHourSummary();
+  }, [fetchData, fetchSystemUsers, fetchTaskWorkHourSummary]);
 
   // Task handlers
   const addTask = () => {
@@ -502,11 +631,20 @@ export default function ProjectManagementTab({ projectId, plannedStartDate, plan
     {
       title: '操作',
       key: 'action',
-      width: 60,
-      render: (_, __, index) => (
-        <Popconfirm title="確定刪除?" onConfirm={() => deleteTask(index)}>
-          <Button type="text" danger icon={<DeleteOutlined />} />
-        </Popconfirm>
+      width: 100,
+      render: (_, record, index) => (
+        <Space size="small">
+          <Tooltip title="記錄工時">
+            <Button
+              type="text"
+              icon={<ClockCircleOutlined />}
+              onClick={() => openTaskWorkHourModal(record)}
+            />
+          </Tooltip>
+          <Popconfirm title="確定刪除?" onConfirm={() => deleteTask(index)}>
+            <Button type="text" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
@@ -922,6 +1060,177 @@ export default function ProjectManagementTab({ projectId, plannedStartDate, plan
           <Empty description="請先新增並儲存成員後，才能填寫工時" />
         )}
       </Card>
+
+      {/* Task Work Hour Summary */}
+      {taskWorkHourSummary && taskWorkHourSummary.tasks.length > 0 && (
+        <Card title={<Space><FieldTimeOutlined /> 任務工時統計</Space>} style={{ marginTop: 16 }}>
+          <Table
+            dataSource={taskWorkHourSummary.tasks}
+            rowKey="taskId"
+            pagination={false}
+            size="small"
+            columns={[
+              { title: '任務名稱', dataIndex: 'taskName', key: 'taskName', width: 200 },
+              { title: '負責人', dataIndex: 'assignee', key: 'assignee', width: 100 },
+              {
+                title: '總工時',
+                dataIndex: 'totalHours',
+                key: 'totalHours',
+                width: 100,
+                render: (v: number) => <Text strong>{v.toFixed(1)} h</Text>
+              },
+              {
+                title: '工時分佈',
+                key: 'byWorker',
+                render: (_, record: TaskWorkHourSummary) => (
+                  <Space wrap>
+                    {Object.entries(record.byWorker).map(([worker, hours]) => (
+                      <Tag key={worker} color="blue">
+                        {worker}: {hours.toFixed(1)}h
+                      </Tag>
+                    ))}
+                  </Space>
+                )
+              },
+              {
+                title: '記錄數',
+                dataIndex: 'entries',
+                key: 'entries',
+                width: 80,
+                render: (v: number) => `${v} 筆`
+              }
+            ]}
+            summary={() => (
+              <Table.Summary fixed>
+                <Table.Summary.Row style={{ background: '#fafafa' }}>
+                  <Table.Summary.Cell index={0}><Text strong>總計</Text></Table.Summary.Cell>
+                  <Table.Summary.Cell index={1}></Table.Summary.Cell>
+                  <Table.Summary.Cell index={2}>
+                    <Text strong type="success">{taskWorkHourSummary.totalProjectHours.toFixed(1)} h</Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={3}>
+                    <Space wrap>
+                      {Object.entries(taskWorkHourSummary.overallByWorker).map(([worker, hours]) => (
+                        <Tag key={worker} color="green">
+                          {worker}: {hours.toFixed(1)}h
+                        </Tag>
+                      ))}
+                    </Space>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={4}>
+                    {taskWorkHourSummary.tasks.reduce((sum, t) => sum + t.entries, 0)} 筆
+                  </Table.Summary.Cell>
+                </Table.Summary.Row>
+              </Table.Summary>
+            )}
+          />
+        </Card>
+      )}
+
+      {/* Task Work Hour Modal */}
+      <Modal
+        title={
+          <Space>
+            <ClockCircleOutlined />
+            記錄工時 - {selectedTask?.taskName}
+          </Space>
+        }
+        open={taskWorkHourModalVisible}
+        onCancel={() => setTaskWorkHourModalVisible(false)}
+        footer={null}
+        width={700}
+      >
+        <Form
+          form={taskWorkHourForm}
+          layout="inline"
+          style={{ marginBottom: 16 }}
+        >
+          <Form.Item
+            name="workerName"
+            label="執行者"
+            rules={[{ required: true, message: '請選擇執行者' }]}
+          >
+            {isPM ? (
+              <Select style={{ width: 120 }} placeholder="選擇執行者" showSearch>
+                {members.map(member => (
+                  <Select.Option key={member.id} value={member.memberName}>
+                    {member.memberName}
+                  </Select.Option>
+                ))}
+              </Select>
+            ) : (
+              <Input style={{ width: 120 }} disabled />
+            )}
+          </Form.Item>
+          <Form.Item
+            name="workDate"
+            label="日期"
+            rules={[{ required: true, message: '請選擇日期' }]}
+          >
+            <DatePicker />
+          </Form.Item>
+          <Form.Item
+            name="hours"
+            label="工時"
+            rules={[{ required: true, message: '請輸入工時' }]}
+          >
+            <InputNumber min={0.5} max={24} step={0.5} placeholder="小時" style={{ width: 80 }} />
+          </Form.Item>
+          <Form.Item name="description" label="說明">
+            <Input placeholder="工作內容" style={{ width: 150 }} />
+          </Form.Item>
+          <Form.Item>
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleAddTaskWorkHour}>
+              新增
+            </Button>
+          </Form.Item>
+        </Form>
+
+        <Table
+          dataSource={taskWorkHours}
+          rowKey="id"
+          size="small"
+          pagination={false}
+          columns={[
+            {
+              title: '日期',
+              dataIndex: 'workDate',
+              key: 'workDate',
+              width: 110,
+              render: (v: string) => dayjs(v).format('YYYY-MM-DD')
+            },
+            { title: '執行者', dataIndex: 'workerName', key: 'workerName', width: 100 },
+            {
+              title: '工時',
+              dataIndex: 'hours',
+              key: 'hours',
+              width: 80,
+              render: (v: number) => `${v} h`
+            },
+            { title: '說明', dataIndex: 'description', key: 'description' },
+            {
+              title: '操作',
+              key: 'action',
+              width: 60,
+              render: (_, record: TaskWorkHour) => (
+                <Popconfirm title="確定刪除?" onConfirm={() => handleDeleteTaskWorkHour(record.id!)}>
+                  <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+                </Popconfirm>
+              )
+            }
+          ]}
+          summary={() => (
+            <Table.Summary.Row style={{ background: '#fafafa' }}>
+              <Table.Summary.Cell index={0}><Text strong>小計</Text></Table.Summary.Cell>
+              <Table.Summary.Cell index={1}></Table.Summary.Cell>
+              <Table.Summary.Cell index={2}>
+                <Text strong>{taskWorkHours.reduce((sum, wh) => sum + Number(wh.hours), 0)} h</Text>
+              </Table.Summary.Cell>
+              <Table.Summary.Cell index={3} colSpan={2}></Table.Summary.Cell>
+            </Table.Summary.Row>
+          )}
+        />
+      </Modal>
     </div>
   );
 }

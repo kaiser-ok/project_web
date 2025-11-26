@@ -6,6 +6,7 @@ export interface User {
   username: string;
   email: string;
   fullName?: string;
+  alias?: string;
   role: 'admin' | 'manager' | 'member' | 'viewer';
   avatar?: string;
   isActive: boolean;
