@@ -162,7 +162,7 @@ export default function ProjectDetailPage() {
       label: (
         <span>
           <ProjectOutlined />
-          專案管理表
+          進度
         </span>
       ),
       children: (

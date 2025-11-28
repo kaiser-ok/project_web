@@ -27,7 +27,7 @@ router.get('/list', async (req: AuthRequest, res: Response) => {
 router.get('/', requireRole(['admin']), async (req: AuthRequest, res: Response) => {
   try {
     const users = await User.findAll({
-      attributes: ['id', 'username', 'email', 'fullName', 'alias', 'role', 'avatar', 'isActive', 'lastLoginAt', 'createdAt', 'updatedAt'],
+      attributes: ['id', 'username', 'email', 'fullName', 'alias', 'role', 'hourlyRate', 'avatar', 'isActive', 'lastLoginAt', 'createdAt', 'updatedAt'],
       order: [['createdAt', 'DESC']]
     });
 
@@ -41,7 +41,7 @@ router.get('/', requireRole(['admin']), async (req: AuthRequest, res: Response) 
 // Invite/create new user (admin only)
 router.post('/invite', requireRole(['admin']), async (req: AuthRequest, res: Response) => {
   try {
-    const { email, fullName, alias, role } = req.body;
+    const { email, fullName, alias, role, hourlyRate } = req.body;
 
     if (!email) {
       res.status(400).json({ error: 'Email is required' });
@@ -63,6 +63,7 @@ router.post('/invite', requireRole(['admin']), async (req: AuthRequest, res: Res
       fullName: fullName || undefined,
       alias: alias || undefined,
       role: role || 'member',
+      hourlyRate: hourlyRate || undefined,
       isActive: true
     });
 
@@ -89,7 +90,7 @@ router.get('/:id', requireRole(['admin']), async (req: AuthRequest, res: Respons
   try {
     const { id } = req.params;
     const user = await User.findByPk(id, {
-      attributes: ['id', 'username', 'email', 'fullName', 'alias', 'role', 'avatar', 'isActive', 'lastLoginAt', 'createdAt', 'updatedAt']
+      attributes: ['id', 'username', 'email', 'fullName', 'alias', 'role', 'hourlyRate', 'avatar', 'isActive', 'lastLoginAt', 'createdAt', 'updatedAt']
     });
 
     if (!user) {
@@ -108,7 +109,7 @@ router.get('/:id', requireRole(['admin']), async (req: AuthRequest, res: Respons
 router.put('/:id', requireRole(['admin']), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { alias, role, isActive } = req.body;
+    const { alias, role, isActive, hourlyRate } = req.body;
 
     const user = await User.findByPk(id);
     if (!user) {
@@ -129,6 +130,10 @@ router.put('/:id', requireRole(['admin']), async (req: AuthRequest, res: Respons
 
     if (isActive !== undefined) {
       updateData.isActive = isActive;
+    }
+
+    if (hourlyRate !== undefined) {
+      updateData.hourlyRate = hourlyRate;
     }
 
     await user.update(updateData);
