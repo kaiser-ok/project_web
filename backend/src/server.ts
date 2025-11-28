@@ -18,6 +18,7 @@ import activityLogRoutes from './routes/activityLog.routes';
 import dashboardRoutes from './routes/dashboard.routes';
 import taskWorkHourRoutes from './routes/taskWorkHour.routes';
 import reportRoutes from './routes/report.routes';
+import costRoutes from './routes/cost.routes';
 import { errorHandler } from './middleware/error.middleware';
 
 // Load environment variables
@@ -69,6 +70,7 @@ app.use('/api/activity-logs', activityLogRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/task-work-hours', taskWorkHourRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/costs', costRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
@@ -89,10 +91,12 @@ const startServer = async () => {
     console.log('✅ Database connection established successfully.');
 
     // Sync models (in development only)
-    if (process.env.NODE_ENV === 'development') {
-      await sequelize.sync({ alter: true });
-      console.log('✅ Database models synchronized.');
-    }
+    // Temporarily disabled due to ENUM sync issues with project_cost_items
+    // Table created manually via scripts/create-cost-items-table.js
+    // if (process.env.NODE_ENV === 'development') {
+    //   await sequelize.sync({ alter: true });
+    //   console.log('✅ Database models synchronized.');
+    // }
 
     // Start server
     app.listen(PORT, () => {

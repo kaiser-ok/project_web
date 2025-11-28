@@ -10,6 +10,7 @@ interface UserAttributes {
   fullName?: string;
   alias?: string;
   role: 'admin' | 'manager' | 'member' | 'viewer';
+  hourlyRate?: number;
   googleId?: string;
   avatar?: string;
   isActive: boolean;
@@ -28,6 +29,7 @@ class User extends Model<UserAttributes, UserCreationAttributes> implements User
   public fullName?: string;
   public alias?: string;
   public role!: 'admin' | 'manager' | 'member' | 'viewer';
+  public hourlyRate?: number;
   public googleId?: string;
   public avatar?: string;
   public isActive!: boolean;
@@ -93,6 +95,12 @@ User.init(
       type: DataTypes.ENUM('admin', 'manager', 'member', 'viewer'),
       allowNull: false,
       defaultValue: 'member'
+    },
+    hourlyRate: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      defaultValue: null,
+      comment: '預設時薪（用於成本計算）'
     },
     googleId: {
       type: DataTypes.STRING(255),

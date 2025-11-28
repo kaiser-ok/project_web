@@ -124,6 +124,20 @@ interface WorkHourSummaryData {
   totalProjectHours: number;
 }
 
+interface CostItem {
+  id?: number;
+  projectId: number;
+  date: string;
+  month: string;
+  category: 'EQUIPMENT' | 'CONSUMABLE' | 'TRAVEL' | 'OTHER';
+  amount: number;
+  description: string;
+  vendor?: string;
+  invoiceNo?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 const roleOptions = [
   { label: 'PPM', value: 'PPM' },
   { label: 'PMO', value: 'PMO' },
@@ -138,6 +152,22 @@ const statusOptions = [
   { label: '已完成', value: 'completed', color: '#52c41a' },
   { label: '延遲', value: 'delayed', color: '#ff4d4f' },
 ];
+
+const categoryOptions = [
+  { label: '全部', value: 'ALL' },
+  { label: '設備費用', value: 'EQUIPMENT', color: 'blue' },
+  { label: '消耗品', value: 'CONSUMABLE', color: 'green' },
+  { label: '交通費', value: 'TRAVEL', color: 'orange' },
+  { label: '其他', value: 'OTHER', color: 'purple' },
+];
+
+const getCategoryLabel = (category: string) => {
+  return categoryOptions.find(c => c.value === category)?.label || category;
+};
+
+const getCategoryColor = (category: string) => {
+  return categoryOptions.find(c => c.value === category)?.color || 'default';
+};
 
 // Generate month columns based on project dates
 function generateMonthColumns(startDate?: string, endDate?: string): string[] {
@@ -180,6 +210,17 @@ export default function ProjectManagementTab({ projectId, plannedStartDate, plan
   const [taskWorkHours, setTaskWorkHours] = useState<TaskWorkHour[]>([]);
   const [taskWorkHourSummary, setTaskWorkHourSummary] = useState<WorkHourSummaryData | null>(null);
   const [taskWorkHourForm] = Form.useForm();
+
+  // Cost management states
+  const [costItems, setCostItems] = useState<CostItem[]>([]);
+  const [costModalVisible, setCostModalVisible] = useState(false);
+  const [editingCost, setEditingCost] = useState<CostItem | null>(null);
+  const [costForm] = Form.useForm();
+  const [costFilter, setCostFilter] = useState({
+    category: 'ALL',
+    startDate: plannedStartDate,
+    endDate: plannedEndDate,
+  });
 
   const months = generateMonthColumns(plannedStartDate, plannedEndDate);
 
@@ -253,6 +294,102 @@ export default function ProjectManagementTab({ projectId, plannedStartDate, plan
       console.error('Failed to fetch task work hours:', error);
     }
   };
+
+  // Cost management functions
+  const fetchCostItems = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      const params: any = {};
+      if (costFilter.category !== 'ALL') {
+        params.category = costFilter.category;
+      }
+      if (costFilter.startDate) {
+        params.startDate = costFilter.startDate;
+      }
+      if (costFilter.endDate) {
+        params.endDate = costFilter.endDate;
+      }
+      const response = await api.get(`/costs/project/${projectId}`, { params });
+      setCostItems(response.data?.data || []);
+    } catch (error) {
+      console.error('Failed to fetch cost items:', error);
+    }
+  }, [projectId, costFilter]);
+
+  const getCostSummary = () => {
+    const summary = {
+      EQUIPMENT: 0,
+      CONSUMABLE: 0,
+      TRAVEL: 0,
+      OTHER: 0,
+      total: 0,
+    };
+    costItems.forEach(item => {
+      const amount = Number(item.amount) || 0;
+      summary[item.category] += amount;
+      summary.total += amount;
+    });
+    return summary;
+  };
+
+  const handleAddCost = () => {
+    setEditingCost(null);
+    costForm.resetFields();
+    costForm.setFieldsValue({
+      date: dayjs(),
+      category: 'EQUIPMENT',
+    });
+    setCostModalVisible(true);
+  };
+
+  const handleEditCost = (cost: CostItem) => {
+    setEditingCost(cost);
+    costForm.setFieldsValue({
+      ...cost,
+      date: dayjs(cost.date),
+    });
+    setCostModalVisible(true);
+  };
+
+  const handleSaveCost = async () => {
+    try {
+      const values = await costForm.validateFields();
+      const costData = {
+        projectId,
+        ...values,
+        date: values.date.format('YYYY-MM-DD'),
+      };
+
+      if (editingCost?.id) {
+        await api.put(`/costs/${editingCost.id}`, costData);
+        message.success('成本已更新');
+      } else {
+        await api.post('/costs', costData);
+        message.success('成本已新增');
+      }
+
+      setCostModalVisible(false);
+      fetchCostItems();
+    } catch (error) {
+      console.error('Failed to save cost:', error);
+      message.error('儲存失敗');
+    }
+  };
+
+  const handleDeleteCost = async (id: number) => {
+    try {
+      await api.delete(`/costs/${id}`);
+      message.success('成本已刪除');
+      fetchCostItems();
+    } catch (error) {
+      console.error('Failed to delete cost:', error);
+      message.error('刪除失敗');
+    }
+  };
+
+  useEffect(() => {
+    fetchCostItems();
+  }, [fetchCostItems]);
 
   // Open work hour modal for a task
   const openTaskWorkHourModal = async (task: Task) => {
@@ -851,80 +988,49 @@ export default function ProjectManagementTab({ projectId, plannedStartDate, plan
       dataIndex: 'role',
       key: 'role',
       width: 100,
-      render: (_, record, index) => (
-        <Select
-          value={record.role}
-          onChange={v => updateMember(index, 'role', v)}
-          style={{ width: '100%' }}
-        >
-          {roleOptions.map(opt => (
-            <Select.Option key={opt.value} value={opt.value}>{opt.label}</Select.Option>
-          ))}
-        </Select>
-      ),
+      render: (role: string) => {
+        const roleColors: Record<string, string> = {
+          'PPM': 'red',
+          'PMO': 'orange',
+          'PD': 'green',
+          'PM': 'blue',
+          'CREW': 'purple',
+        };
+        return <Tag color={roleColors[role] || 'default'}>{role}</Tag>;
+      },
     },
     {
       title: '姓名',
       dataIndex: 'memberName',
       key: 'memberName',
       width: 150,
-      render: (_, record, index) => (
-        <Select
-          value={record.memberName}
-          onChange={v => updateMember(index, 'memberName', v)}
-          placeholder="選擇成員"
-          style={{ width: '100%' }}
-          allowClear
-          showSearch
-          optionFilterProp="children"
-        >
-          {systemUsers.map(user => (
-            <Select.Option key={user.id} value={getUserDisplayName(user)}>
-              {getUserDisplayName(user)}
-            </Select.Option>
-          ))}
-        </Select>
-      ),
     },
     {
       title: '等級',
       dataIndex: 'memberClass',
       key: 'memberClass',
       width: 80,
-      render: (_, record, index) => (
-        <Input
-          value={record.memberClass}
-          onChange={e => updateMember(index, 'memberClass', e.target.value)}
-          placeholder="等級"
-        />
-      ),
+      render: (value: string) => value || '-',
     },
     {
       title: '時薪',
       dataIndex: 'hourlyRate',
       key: 'hourlyRate',
       width: 100,
-      render: (_, record, index) => (
-        <InputNumber
-          value={record.hourlyRate}
-          onChange={v => updateMember(index, 'hourlyRate', v || 0)}
-          style={{ width: '100%' }}
-          formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-          parser={v => Number(v?.replace(/,/g, '') || 0)}
-        />
-      ),
-    },
-    {
-      title: '操作',
-      key: 'action',
-      width: 60,
-      render: (_, __, index) => (
-        <Popconfirm title="確定刪除?" onConfirm={() => deleteMember(index)}>
-          <Button type="text" danger icon={<DeleteOutlined />} />
-        </Popconfirm>
-      ),
+      align: 'right' as const,
+      render: (value: number) => value ? `¥ ${Number(value).toLocaleString()}` : '-',
     },
   ];
+
+  // Calculate cost by month
+  const getCostByMonth = (month: string): number => {
+    return costItems
+      .filter(item => item.month === month)
+      .reduce((sum, item) => sum + Number(item.amount), 0);
+  };
+
+  // Calculate total cost
+  const totalCost = costItems.reduce((sum, item) => sum + Number(item.amount), 0);
 
   // Calculate finance totals
   const financeTotals = {
@@ -932,12 +1038,330 @@ export default function ProjectManagementTab({ projectId, plannedStartDate, plan
     actualRevenue: months.reduce((sum, m) => sum + getFinanceValue(m, 'actualRevenue'), 0),
     plannedExpense: months.reduce((sum, m) => sum + getFinanceValue(m, 'plannedExpense'), 0),
     actualExpense: months.reduce((sum, m) => sum + getFinanceValue(m, 'actualExpense'), 0),
+    totalCost: totalCost, // 非人力成本總計
   };
   const plannedProfit = financeTotals.plannedRevenue - financeTotals.plannedExpense;
-  const actualProfit = financeTotals.actualRevenue - financeTotals.actualExpense;
+  const actualProfit = financeTotals.actualRevenue - (financeTotals.actualExpense + financeTotals.totalCost);
+
+  // Helper function to determine if a task spans a specific month
+  const taskSpansMonth = (task: Task, month: string): boolean => {
+    if (!task.startDate || !task.endDate) return false;
+    const monthStart = dayjs(month).startOf('month');
+    const monthEnd = dayjs(month).endOf('month');
+    const taskStart = dayjs(task.startDate);
+    const taskEnd = dayjs(task.endDate);
+
+    return taskStart.isBefore(monthEnd) && taskEnd.isAfter(monthStart);
+  };
+
+  // Get task bar style for Gantt chart
+  const getTaskBarStyle = (task: Task, month: string) => {
+    if (!taskSpansMonth(task, month)) return null;
+
+    const monthStart = dayjs(month).startOf('month');
+    const monthEnd = dayjs(month).endOf('month');
+    const taskStart = dayjs(task.startDate);
+    const taskEnd = dayjs(task.endDate);
+
+    // Calculate position and width percentage
+    const monthDays = monthEnd.diff(monthStart, 'day') + 1;
+    const barStart = taskStart.isBefore(monthStart) ? monthStart : taskStart;
+    const barEnd = taskEnd.isAfter(monthEnd) ? monthEnd : taskEnd;
+
+    const daysFromStart = barStart.diff(monthStart, 'day');
+    const barDays = barEnd.diff(barStart, 'day') + 1;
+
+    const leftPercent = (daysFromStart / monthDays) * 100;
+    const widthPercent = (barDays / monthDays) * 100;
+
+    // Color based on status
+    const colors = {
+      not_started: '#d9d9d9',
+      in_progress: '#1890ff',
+      completed: '#52c41a',
+      delayed: '#ff4d4f',
+    };
+
+    return {
+      position: 'absolute' as const,
+      left: `${leftPercent}%`,
+      width: `${widthPercent}%`,
+      height: '20px',
+      backgroundColor: colors[task.status],
+      borderRadius: '3px',
+      top: '50%',
+      transform: 'translateY(-50%)',
+    };
+  };
 
   return (
     <div>
+      {/* Project Overview - Matrix View */}
+      <Card
+        title="專案概覽"
+        style={{ marginBottom: 16 }}
+      >
+        {/* Task Timeline - Gantt Style */}
+        <div style={{ marginBottom: 24 }}>
+          <Text strong style={{ fontSize: 16, marginBottom: 8, display: 'block' }}>任務時間軸</Text>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: months.length * 100 + 250 }}>
+              <thead>
+                <tr style={{ background: '#fafafa' }}>
+                  <th style={{ border: '1px solid #d9d9d9', padding: 8, width: 200, position: 'sticky', left: 0, background: '#fafafa', zIndex: 1 }}>任務名稱</th>
+                  <th style={{ border: '1px solid #d9d9d9', padding: 8, width: 80 }}>天數</th>
+                  {months.map(m => (
+                    <th key={m} style={{ border: '1px solid #d9d9d9', padding: 8, minWidth: 100 }}>
+                      {dayjs(m).format('YYYY/MM')}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {tasks.filter(t => t.startDate && t.endDate).length === 0 ? (
+                  <tr>
+                    <td colSpan={months.length + 2} style={{ padding: 16, textAlign: 'center' }}>
+                      <Text type="secondary">尚無任務時間資料，請設定任務的開始與結束日期</Text>
+                    </td>
+                  </tr>
+                ) : (
+                  tasks.filter(t => t.startDate && t.endDate).map((task, idx) => (
+                    <tr key={task.id || idx}>
+                      <td style={{ border: '1px solid #d9d9d9', padding: 8, position: 'sticky', left: 0, background: '#fff', zIndex: 1 }}>
+                        <Tooltip title={task.assignee ? `負責人: ${task.assignee}` : ''}>
+                          <Text ellipsis style={{ maxWidth: 180, display: 'block' }}>{task.taskName || '未命名任務'}</Text>
+                        </Tooltip>
+                      </td>
+                      <td style={{ border: '1px solid #d9d9d9', padding: 8, textAlign: 'center' }}>
+                        <Text>{task.durationDays || '-'}</Text>
+                      </td>
+                      {months.map(m => (
+                        <td key={m} style={{ border: '1px solid #d9d9d9', padding: 4, position: 'relative', height: 36 }}>
+                          {taskSpansMonth(task, m) && (
+                            <div style={getTaskBarStyle(task, m)!}>
+                              <Tooltip title={`${task.taskName} (${task.progress}%)`}>
+                                <div style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: 11,
+                                  color: '#fff',
+                                  fontWeight: 'bold'
+                                }}>
+                                  {task.progress > 0 ? `${task.progress}%` : ''}
+                                </div>
+                              </Tooltip>
+                            </div>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Financial Summary */}
+        <div>
+          <Text strong style={{ fontSize: 16, marginBottom: 8, display: 'block' }}>財務概覽</Text>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: months.length * 100 + 150 }}>
+              <thead>
+                <tr style={{ background: '#fafafa' }}>
+                  <th style={{ border: '1px solid #d9d9d9', padding: 8, width: 120 }}>項目</th>
+                  {months.map(m => (
+                    <th key={m} style={{ border: '1px solid #d9d9d9', padding: 8, minWidth: 100 }}>
+                      {dayjs(m).format('YYYY/MM')}
+                    </th>
+                  ))}
+                  <th style={{ border: '1px solid #d9d9d9', padding: 8, width: 120, background: '#e6f7ff' }}>合計</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style={{ border: '1px solid #d9d9d9', padding: 8 }}><Text strong>收入</Text></td>
+                  {months.map(m => {
+                    const value = getFinanceValue(m, 'actualRevenue');
+                    return (
+                      <td key={m} style={{ border: '1px solid #d9d9d9', padding: 8, textAlign: 'right' }}>
+                        <Text>{value > 0 ? value.toLocaleString() : '-'}</Text>
+                      </td>
+                    );
+                  })}
+                  <td style={{ border: '1px solid #d9d9d9', padding: 8, background: '#e6f7ff', textAlign: 'right' }}>
+                    <Text strong>{financeTotals.actualRevenue.toLocaleString()}</Text>
+                  </td>
+                </tr>
+                <tr>
+                  <td style={{ border: '1px solid #d9d9d9', padding: 8 }}><Text strong>人力成本</Text></td>
+                  {months.map(m => {
+                    const value = getFinanceValue(m, 'actualExpense');
+                    return (
+                      <td key={m} style={{ border: '1px solid #d9d9d9', padding: 8, textAlign: 'right' }}>
+                        <Text>{value > 0 ? value.toLocaleString() : '-'}</Text>
+                      </td>
+                    );
+                  })}
+                  <td style={{ border: '1px solid #d9d9d9', padding: 8, background: '#e6f7ff', textAlign: 'right' }}>
+                    <Text strong>{financeTotals.actualExpense.toLocaleString()}</Text>
+                  </td>
+                </tr>
+                <tr>
+                  <td style={{ border: '1px solid #d9d9d9', padding: 8 }}><Text strong style={{ color: '#fa8c16' }}>非人力成本</Text></td>
+                  {months.map(m => {
+                    const value = getCostByMonth(m);
+                    return (
+                      <td key={m} style={{ border: '1px solid #d9d9d9', padding: 8, textAlign: 'right' }}>
+                        <Text style={{ color: '#fa8c16' }}>{value > 0 ? value.toLocaleString() : '-'}</Text>
+                      </td>
+                    );
+                  })}
+                  <td style={{ border: '1px solid #d9d9d9', padding: 8, background: '#e6f7ff', textAlign: 'right' }}>
+                    <Text strong style={{ color: '#fa8c16' }}>{financeTotals.totalCost.toLocaleString()}</Text>
+                  </td>
+                </tr>
+                <tr style={{ background: '#f0f0f0' }}>
+                  <td style={{ border: '1px solid #d9d9d9', padding: 8 }}><Text strong>總支出</Text></td>
+                  {months.map(m => {
+                    const value = getFinanceValue(m, 'actualExpense') + getCostByMonth(m);
+                    return (
+                      <td key={m} style={{ border: '1px solid #d9d9d9', padding: 8, textAlign: 'right' }}>
+                        <Text strong>{value > 0 ? value.toLocaleString() : '-'}</Text>
+                      </td>
+                    );
+                  })}
+                  <td style={{ border: '1px solid #d9d9d9', padding: 8, background: '#e6f7ff', textAlign: 'right' }}>
+                    <Text strong style={{ fontSize: 16 }}>{(financeTotals.actualExpense + financeTotals.totalCost).toLocaleString()}</Text>
+                  </td>
+                </tr>
+                <tr style={{ background: '#f5f5f5' }}>
+                  <td style={{ border: '1px solid #d9d9d9', padding: 8 }}><Text strong>損益</Text></td>
+                  {months.map(m => {
+                    const revenue = getFinanceValue(m, 'actualRevenue');
+                    const expense = getFinanceValue(m, 'actualExpense') + getCostByMonth(m);
+                    const profit = revenue - expense;
+                    return (
+                      <td key={m} style={{ border: '1px solid #d9d9d9', padding: 8, textAlign: 'right' }}>
+                        <Text strong type={profit >= 0 ? 'success' : 'danger'}>
+                          {profit !== 0 ? profit.toLocaleString() : '-'}
+                        </Text>
+                      </td>
+                    );
+                  })}
+                  <td style={{ border: '1px solid #d9d9d9', padding: 8, background: '#e6f7ff', textAlign: 'right' }}>
+                    <Text strong style={{ fontSize: 16 }} type={actualProfit >= 0 ? 'success' : 'danger'}>
+                      {actualProfit.toLocaleString()}
+                    </Text>
+                  </td>
+                </tr>
+                <tr>
+                  <td style={{ border: '1px solid #d9d9d9', padding: 8 }}><Text strong>損益率</Text></td>
+                  {months.map(m => {
+                    const revenue = getFinanceValue(m, 'actualRevenue');
+                    const expense = getFinanceValue(m, 'actualExpense') + getCostByMonth(m);
+                    const profit = revenue - expense;
+                    const profitRate = revenue > 0 ? (profit / revenue) * 100 : 0;
+                    return (
+                      <td key={m} style={{ border: '1px solid #d9d9d9', padding: 8, textAlign: 'right' }}>
+                        <Text type={profitRate >= 0 ? 'success' : 'danger'}>
+                          {revenue > 0 ? `${profitRate.toFixed(1)}%` : '-'}
+                        </Text>
+                      </td>
+                    );
+                  })}
+                  <td style={{ border: '1px solid #d9d9d9', padding: 8, background: '#e6f7ff', textAlign: 'right' }}>
+                    <Text strong type={(actualProfit / (financeTotals.actualRevenue || 1)) >= 0 ? 'success' : 'danger'}>
+                      {financeTotals.actualRevenue > 0 ? `${((actualProfit / financeTotals.actualRevenue) * 100).toFixed(1)}%` : '-'}
+                    </Text>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Member Work Hours Summary */}
+        {members.filter(m => m.id).length > 0 && (
+          <div style={{ marginTop: 24 }}>
+            <Text strong style={{ fontSize: 16, marginBottom: 8, display: 'block' }}>人力配置</Text>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: months.length * 80 + 200 }}>
+                <thead>
+                  <tr style={{ background: '#fafafa' }}>
+                    <th style={{ border: '1px solid #d9d9d9', padding: 8, width: 80 }}>角色</th>
+                    <th style={{ border: '1px solid #d9d9d9', padding: 8, width: 100 }}>姓名</th>
+                    {months.map(m => (
+                      <th key={m} style={{ border: '1px solid #d9d9d9', padding: 8, minWidth: 80 }}>
+                        {dayjs(m).format('MM月')}
+                      </th>
+                    ))}
+                    <th style={{ border: '1px solid #d9d9d9', padding: 8, width: 80, background: '#e6f7ff' }}>合計</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {members.filter(m => m.id).map(member => (
+                    <tr key={member.id}>
+                      <td style={{ border: '1px solid #d9d9d9', padding: 8, textAlign: 'center' }}>
+                        <Tag color={
+                          member.role === 'PPM' ? 'red' :
+                          member.role === 'PMO' ? 'orange' :
+                          member.role === 'PD' ? 'green' :
+                          member.role === 'PM' ? 'blue' : 'purple'
+                        }>
+                          {member.role}
+                        </Tag>
+                      </td>
+                      <td style={{ border: '1px solid #d9d9d9', padding: 8 }}>
+                        {member.memberName}
+                      </td>
+                      {months.map(m => {
+                        const actualHours = getWorkHourValue(member.id!, m, 'actualHours');
+                        return (
+                          <td key={m} style={{ border: '1px solid #d9d9d9', padding: 8, textAlign: 'right' }}>
+                            <Text>{actualHours > 0 ? actualHours.toFixed(0) : '-'}</Text>
+                          </td>
+                        );
+                      })}
+                      <td style={{ border: '1px solid #d9d9d9', padding: 8, background: '#e6f7ff', textAlign: 'right' }}>
+                        <Text strong>
+                          {months.reduce((sum, m) => sum + getWorkHourValue(member.id!, m, 'actualHours'), 0).toFixed(0)}
+                        </Text>
+                      </td>
+                    </tr>
+                  ))}
+                  <tr style={{ background: '#f5f5f5' }}>
+                    <td colSpan={2} style={{ border: '1px solid #d9d9d9', padding: 8 }}><Text strong>總計</Text></td>
+                    {months.map(m => {
+                      const total = members.filter(mem => mem.id).reduce((sum, mem) =>
+                        sum + getWorkHourValue(mem.id!, m, 'actualHours'), 0
+                      );
+                      return (
+                        <td key={m} style={{ border: '1px solid #d9d9d9', padding: 8, textAlign: 'right' }}>
+                          <Text strong>{total > 0 ? total.toFixed(0) : '-'}</Text>
+                        </td>
+                      );
+                    })}
+                    <td style={{ border: '1px solid #d9d9d9', padding: 8, background: '#e6f7ff', textAlign: 'right' }}>
+                      <Text strong style={{ fontSize: 16 }}>
+                        {months.reduce((total, m) =>
+                          total + members.filter(mem => mem.id).reduce((sum, mem) =>
+                            sum + getWorkHourValue(mem.id!, m, 'actualHours'), 0
+                          ), 0
+                        ).toFixed(0)}
+                      </Text>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </Card>
+
       {/* Task Management */}
       <Card
         title="任務管理"
@@ -1068,6 +1492,34 @@ export default function ProjectManagementTab({ projectId, plannedStartDate, plan
                   <Text strong>{financeTotals.actualExpense.toLocaleString()}</Text>
                 </td>
               </tr>
+              <tr style={{ background: '#fff8e6' }}>
+                <td style={{ border: '1px solid #d9d9d9', padding: 8 }}><Text strong style={{ color: '#fa8c16' }}>非人力成本</Text></td>
+                {months.map(m => {
+                  const monthlyCost = getCostByMonth(m);
+                  return (
+                    <td key={m} style={{ border: '1px solid #d9d9d9', padding: 8, textAlign: 'right' }}>
+                      <Text style={{ color: '#fa8c16' }}>{monthlyCost > 0 ? monthlyCost.toLocaleString() : '-'}</Text>
+                    </td>
+                  );
+                })}
+                <td style={{ border: '1px solid #d9d9d9', padding: 8, background: '#e6f7ff', textAlign: 'right' }}>
+                  <Text strong style={{ color: '#fa8c16' }}>{financeTotals.totalCost.toLocaleString()}</Text>
+                </td>
+              </tr>
+              <tr style={{ background: '#f0f0f0' }}>
+                <td style={{ border: '1px solid #d9d9d9', padding: 8 }}><Text strong>實際支出總計</Text></td>
+                {months.map(m => {
+                  const totalExpense = getFinanceValue(m, 'actualExpense') + getCostByMonth(m);
+                  return (
+                    <td key={m} style={{ border: '1px solid #d9d9d9', padding: 8, textAlign: 'right' }}>
+                      <Text strong>{totalExpense.toLocaleString()}</Text>
+                    </td>
+                  );
+                })}
+                <td style={{ border: '1px solid #d9d9d9', padding: 8, background: '#e6f7ff', textAlign: 'right' }}>
+                  <Text strong style={{ fontSize: 16 }}>{(financeTotals.actualExpense + financeTotals.totalCost).toLocaleString()}</Text>
+                </td>
+              </tr>
               <tr style={{ background: '#f5f5f5' }}>
                 <td style={{ border: '1px solid #d9d9d9', padding: 8 }}><Text strong>計劃損益</Text></td>
                 {months.map(m => {
@@ -1085,7 +1537,8 @@ export default function ProjectManagementTab({ projectId, plannedStartDate, plan
               <tr style={{ background: '#f5f5f5' }}>
                 <td style={{ border: '1px solid #d9d9d9', padding: 8 }}><Text strong>實際損益</Text></td>
                 {months.map(m => {
-                  const profit = getFinanceValue(m, 'actualRevenue') - getFinanceValue(m, 'actualExpense');
+                  const totalExpense = getFinanceValue(m, 'actualExpense') + getCostByMonth(m);
+                  const profit = getFinanceValue(m, 'actualRevenue') - totalExpense;
                   return (
                     <td key={m} style={{ border: '1px solid #d9d9d9', padding: 8, textAlign: 'right' }}>
                       <Text type={profit >= 0 ? 'success' : 'danger'}>{profit.toLocaleString()}</Text>
@@ -1101,29 +1554,264 @@ export default function ProjectManagementTab({ projectId, plannedStartDate, plan
         </div>
       </Card>
 
+      {/* Cost Management */}
+      <Card
+        title="成本管理"
+        style={{ marginBottom: 16 }}
+        extra={
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAddCost}>
+            新增成本
+          </Button>
+        }
+      >
+        {costItems.length === 0 ? (
+          <Empty description="尚無成本資料" />
+        ) : (
+          <>
+            {/* Cost Summary Cards */}
+            <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+              <Col span={6}>
+                <Card size="small">
+                  <Text type="secondary">設備費用</Text>
+                  <div>
+                    <Text strong style={{ fontSize: 20, color: '#1890ff' }}>
+                      ¥ {getCostSummary().EQUIPMENT.toLocaleString()}
+                    </Text>
+                  </div>
+                </Card>
+              </Col>
+              <Col span={6}>
+                <Card size="small">
+                  <Text type="secondary">消耗品</Text>
+                  <div>
+                    <Text strong style={{ fontSize: 20, color: '#52c41a' }}>
+                      ¥ {getCostSummary().CONSUMABLE.toLocaleString()}
+                    </Text>
+                  </div>
+                </Card>
+              </Col>
+              <Col span={6}>
+                <Card size="small">
+                  <Text type="secondary">交通費</Text>
+                  <div>
+                    <Text strong style={{ fontSize: 20, color: '#fa8c16' }}>
+                      ¥ {getCostSummary().TRAVEL.toLocaleString()}
+                    </Text>
+                  </div>
+                </Card>
+              </Col>
+              <Col span={6}>
+                <Card size="small">
+                  <Text type="secondary">其他</Text>
+                  <div>
+                    <Text strong style={{ fontSize: 20, color: '#722ed1' }}>
+                      ¥ {getCostSummary().OTHER.toLocaleString()}
+                    </Text>
+                  </div>
+                </Card>
+              </Col>
+            </Row>
+
+            <Row gutter={16} style={{ marginBottom: 16 }}>
+              <Col span={24}>
+                <Card size="small" style={{ background: '#e6f7ff' }}>
+                  <Space size="large">
+                    <div>
+                      <Text type="secondary">總成本</Text>
+                      <div>
+                        <Text strong style={{ fontSize: 24, color: '#1890ff' }}>
+                          ¥ {getCostSummary().total.toLocaleString()}
+                        </Text>
+                      </div>
+                    </div>
+                  </Space>
+                </Card>
+              </Col>
+            </Row>
+
+            {/* Filters */}
+            <Space style={{ marginBottom: 16 }}>
+              <Select
+                value={costFilter.category}
+                onChange={v => setCostFilter({ ...costFilter, category: v })}
+                style={{ width: 150 }}
+              >
+                {categoryOptions.map(opt => (
+                  <Select.Option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </Select.Option>
+                ))}
+              </Select>
+              <DatePicker.RangePicker
+                value={[
+                  costFilter.startDate ? dayjs(costFilter.startDate) : null,
+                  costFilter.endDate ? dayjs(costFilter.endDate) : null,
+                ]}
+                onChange={dates => {
+                  setCostFilter({
+                    ...costFilter,
+                    startDate: dates?.[0]?.format('YYYY-MM-DD'),
+                    endDate: dates?.[1]?.format('YYYY-MM-DD'),
+                  });
+                }}
+              />
+            </Space>
+
+            {/* Cost Items Table */}
+            <Table
+              dataSource={costItems}
+              rowKey="id"
+              pagination={{ pageSize: 10 }}
+              loading={loading}
+              columns={[
+                {
+                  title: '日期',
+                  dataIndex: 'date',
+                  key: 'date',
+                  width: 120,
+                  render: (date: string) => dayjs(date).format('YYYY-MM-DD'),
+                  sorter: (a, b) => dayjs(a.date).valueOf() - dayjs(b.date).valueOf(),
+                },
+                {
+                  title: '類別',
+                  dataIndex: 'category',
+                  key: 'category',
+                  width: 120,
+                  render: (category: string) => (
+                    <Tag color={getCategoryColor(category)}>
+                      {getCategoryLabel(category)}
+                    </Tag>
+                  ),
+                },
+                {
+                  title: '說明',
+                  dataIndex: 'description',
+                  key: 'description',
+                },
+                {
+                  title: '金額',
+                  dataIndex: 'amount',
+                  key: 'amount',
+                  width: 120,
+                  align: 'right' as const,
+                  render: (amount: number) => `¥ ${Number(amount).toLocaleString()}`,
+                  sorter: (a, b) => Number(a.amount) - Number(b.amount),
+                },
+                {
+                  title: '供應商',
+                  dataIndex: 'vendor',
+                  key: 'vendor',
+                  width: 150,
+                  render: (vendor?: string) => vendor || '-',
+                },
+                {
+                  title: '單據編號',
+                  dataIndex: 'invoiceNo',
+                  key: 'invoiceNo',
+                  width: 150,
+                  render: (invoiceNo?: string) => invoiceNo || '-',
+                },
+                {
+                  title: '操作',
+                  key: 'action',
+                  width: 120,
+                  render: (_: any, record: CostItem) => (
+                    <Space>
+                      <Button size="small" onClick={() => handleEditCost(record)}>
+                        編輯
+                      </Button>
+                      <Popconfirm
+                        title="確定要刪除這筆成本嗎？"
+                        onConfirm={() => handleDeleteCost(record.id!)}
+                        okText="確定"
+                        cancelText="取消"
+                      >
+                        <Button size="small" danger icon={<DeleteOutlined />} />
+                      </Popconfirm>
+                    </Space>
+                  ),
+                },
+              ]}
+            />
+          </>
+        )}
+      </Card>
+
+      {/* Cost Modal */}
+      <Modal
+        title={editingCost ? '編輯成本' : '新增成本'}
+        open={costModalVisible}
+        onOk={handleSaveCost}
+        onCancel={() => setCostModalVisible(false)}
+        okText="儲存"
+        cancelText="取消"
+        width={600}
+      >
+        <Form form={costForm} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item
+            name="date"
+            label="日期"
+            rules={[{ required: true, message: '請選擇日期' }]}
+          >
+            <DatePicker style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item
+            name="category"
+            label="類別"
+            rules={[{ required: true, message: '請選擇類別' }]}
+          >
+            <Select>
+              {categoryOptions.filter(c => c.value !== 'ALL').map(opt => (
+                <Select.Option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <Form.Item
+            name="amount"
+            label="金額"
+            rules={[
+              { required: true, message: '請輸入金額' },
+              { type: 'number', min: 0.01, message: '金額必須大於 0' },
+            ]}
+          >
+            <InputNumber
+              style={{ width: '100%' }}
+              min={0}
+              precision={2}
+              formatter={value => `¥ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+              parser={value => value!.replace(/¥\s?|(,*)/g, '')}
+            />
+          </Form.Item>
+          <Form.Item
+            name="description"
+            label="說明"
+            rules={[{ required: true, message: '請輸入說明' }]}
+          >
+            <Input.TextArea rows={3} />
+          </Form.Item>
+          <Form.Item name="vendor" label="供應商">
+            <Input />
+          </Form.Item>
+          <Form.Item name="invoiceNo" label="單據編號">
+            <Input />
+          </Form.Item>
+        </Form>
+      </Modal>
+
       {/* Work Hours Management */}
       <Card
         title="工時管理"
         extra={
-          <Space>
-            <Button icon={<PlusOutlined />} onClick={addMember}>新增成員</Button>
-            <Button
-              type="primary"
-              icon={<SaveOutlined />}
-              onClick={saveMembers}
-              loading={savingMembers}
-            >
-              儲存成員
-            </Button>
-            <Button
-              type="primary"
-              icon={<SaveOutlined />}
-              onClick={saveWorkHours}
-              loading={savingWorkHours}
-            >
-              儲存工時
-            </Button>
-          </Space>
+          <Button
+            type="primary"
+            icon={<SaveOutlined />}
+            onClick={saveWorkHours}
+            loading={savingWorkHours}
+          >
+            儲存工時
+          </Button>
         }
       >
         {/* Member list */}
@@ -1252,7 +1940,7 @@ export default function ProjectManagementTab({ projectId, plannedStartDate, plan
         )}
 
         {members.filter(m => m.id).length === 0 && (
-          <Empty description="請先新增並儲存成員後，才能填寫工時" />
+          <Empty description="尚無成員資料，請至「專案計劃書」新增成員" />
         )}
       </Card>
 

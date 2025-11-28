@@ -15,9 +15,9 @@ import {
   Spin,
   Alert,
   Divider,
-  Rate
+  Table,
 } from 'antd';
-import { SaveOutlined, PlusOutlined } from '@ant-design/icons';
+import { SaveOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { ProjectData } from '../../pages/ProjectDetailPage';
 import api from '../../lib/axios';
@@ -38,65 +38,83 @@ interface ProjectReport {
 
   // Goal
   goalValueCreated?: string;
-  goalCustomerSatisfaction?: string;
   goalProblemSolved?: string;
-  goalMetrics?: any;
 
   // Approach
-  approachSolution?: string;
   approachMethod?: string;
-  approachProblemsEncountered?: string;
-  approachImprovementMeasures?: string;
-  approachLessonsLearned?: string;
-  approachBestPractices?: string;
+  approachFutureImprovements?: string;
 
   // Resource
-  resourceTeamStructure?: any;
   resourceScheduleAssessment?: string;
   resourceCostAssessment?: string;
-  resourceUtilization?: any;
-  resourceConstraints?: string;
+  resourceWorkHourAssessment?: string;
 
   // Feedback
-  customerFeedback?: string;
-  customerSatisfactionScore?: number;
-  teamFeedback?: string;
   organizationalImprovement?: string;
+  knowledgeAccumulation?: string;
+}
+
+interface CostSummary {
+  EQUIPMENT: number;
+  CONSUMABLE: number;
+  TRAVEL: number;
+  OTHER: number;
+  total: number;
 }
 
 export default function ProjectReportTab({ project, onChange }: Props) {
-  const [reports, setReports] = useState<ProjectReport[]>([]);
-  const [currentReport, setCurrentReport] = useState<ProjectReport | null>(null);
+  const [report, setReport] = useState<ProjectReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [costSummary, setCostSummary] = useState<CostSummary>({
+    EQUIPMENT: 0,
+    CONSUMABLE: 0,
+    TRAVEL: 0,
+    OTHER: 0,
+    total: 0,
+  });
 
   useEffect(() => {
     if (project.id) {
-      fetchReports();
+      fetchReport();
+      fetchCostSummary();
     }
   }, [project.id]);
 
-  const fetchReports = async () => {
+  const fetchCostSummary = async () => {
+    try {
+      const response = await api.get(`/costs/project/${project.id}/summary`);
+      const summary = response.data?.data || {
+        EQUIPMENT: 0,
+        CONSUMABLE: 0,
+        TRAVEL: 0,
+        OTHER: 0,
+        total: 0,
+      };
+      setCostSummary(summary);
+    } catch (error) {
+      console.error('Failed to fetch cost summary:', error);
+    }
+  };
+
+  const fetchReport = async () => {
     try {
       setLoading(true);
       const response = await api.get(`/reports/project/${project.id}`);
-      const fetchedReports = response.data.data || response.data || [];
-      setReports(fetchedReports);
+      const reports = response.data.data || response.data || [];
 
-      // Load the first report if available, otherwise create a new one
-      if (fetchedReports.length > 0) {
-        setCurrentReport(fetchedReports[0]);
+      if (reports.length > 0) {
+        setReport(reports[0]);
       } else {
-        setCurrentReport({
+        setReport({
           projectId: project.id!,
           reportType: 'final',
           reportDate: dayjs().format('YYYY-MM-DD')
         });
       }
     } catch (error) {
-      console.error('Failed to fetch reports:', error);
-      // Initialize with a new report
-      setCurrentReport({
+      console.error('Failed to fetch report:', error);
+      setReport({
         projectId: project.id!,
         reportType: 'final',
         reportDate: dayjs().format('YYYY-MM-DD')
@@ -107,19 +125,18 @@ export default function ProjectReportTab({ project, onChange }: Props) {
   };
 
   const handleSaveReport = async () => {
-    if (!currentReport) return;
+    if (!report) return;
 
     try {
       setSaving(true);
-      if (currentReport.id) {
-        await api.put(`/reports/${currentReport.id}`, currentReport);
+      if (report.id) {
+        await api.put(`/reports/${report.id}`, report);
         message.success('報告已儲存');
       } else {
-        const response = await api.post('/reports', currentReport);
+        const response = await api.post('/reports', report);
         const newReport = response.data.data || response.data;
-        setCurrentReport(newReport);
+        setReport(newReport);
         message.success('報告已建立');
-        fetchReports();
       }
     } catch (error: any) {
       message.error(error.response?.data?.message || '儲存失敗');
@@ -129,16 +146,20 @@ export default function ProjectReportTab({ project, onChange }: Props) {
   };
 
   const updateReport = (field: keyof ProjectReport, value: any) => {
-    if (!currentReport) return;
-    setCurrentReport({ ...currentReport, [field]: value });
+    if (!report) return;
+    setReport({ ...report, [field]: value });
   };
 
   const actualProfit = (project.actualRevenue || 0) - (project.actualExpense || 0);
   const plannedProfit = (project.plannedRevenue || 0) - (project.plannedExpense || 0);
+  const actualProfitRate = project.actualRevenue ? ((actualProfit / project.actualRevenue) * 100).toFixed(1) : 0;
+  const plannedProfitRate = project.plannedRevenue ? ((plannedProfit / project.plannedRevenue) * 100).toFixed(1) : 0;
 
-  // Calculate date variance
   const hasDateVariance = project.plannedStartDate !== project.actualStartDate ||
                           project.plannedEndDate !== project.actualEndDate;
+
+  const hasFinancialVariance = project.plannedRevenue !== project.actualRevenue ||
+                               project.plannedExpense !== project.actualExpense;
 
   if (loading) {
     return (
@@ -148,7 +169,7 @@ export default function ProjectReportTab({ project, onChange }: Props) {
     );
   }
 
-  if (!currentReport) {
+  if (!report) {
     return (
       <Card>
         <Alert message="無法載入報告" type="error" />
@@ -156,316 +177,8 @@ export default function ProjectReportTab({ project, onChange }: Props) {
     );
   }
 
-  const tabItems = [
-    {
-      key: 'goal',
-      label: 'Goal（目標）',
-      children: (
-        <div style={{ maxWidth: 1000 }}>
-          <Card title="創造的價值・顧客滿足" size="small" style={{ marginBottom: 16 }}>
-            <TextArea
-              rows={4}
-              value={currentReport.goalValueCreated}
-              onChange={(e) => updateReport('goalValueCreated', e.target.value)}
-              placeholder="プロジェクトを通じて創出する価値・顧客満足を記載..."
-            />
-          </Card>
-
-          <Card title="顧客滿足的內容" size="small" style={{ marginBottom: 16 }}>
-            <TextArea
-              rows={4}
-              value={currentReport.goalCustomerSatisfaction}
-              onChange={(e) => updateReport('goalCustomerSatisfaction', e.target.value)}
-              placeholder="顧客満足の内容を記載..."
-            />
-          </Card>
-
-          <Card title="專案要解決的問題" size="small" style={{ marginBottom: 16 }}>
-            <TextArea
-              rows={4}
-              value={currentReport.goalProblemSolved}
-              onChange={(e) => updateReport('goalProblemSolved', e.target.value)}
-              placeholder="プロジェクトで行う問題解決を記載..."
-            />
-          </Card>
-        </div>
-      )
-    },
-    {
-      key: 'approach',
-      label: 'Approach（方法）',
-      children: (
-        <div style={{ maxWidth: 1000 }}>
-          <Card title="解決方案" size="small" style={{ marginBottom: 16 }}>
-            <TextArea
-              rows={4}
-              value={currentReport.approachSolution}
-              onChange={(e) => updateReport('approachSolution', e.target.value)}
-              placeholder="解決方案的詳細說明..."
-            />
-          </Card>
-
-          <Card title="執行方法・提供的體驗" size="small" style={{ marginBottom: 16 }}>
-            <TextArea
-              rows={4}
-              value={currentReport.approachMethod}
-              onChange={(e) => updateReport('approachMethod', e.target.value)}
-              placeholder="どのような経験・体験を通じて顧客満足を与えるか..."
-            />
-          </Card>
-
-          <Card title="專案推進中發生的問題" size="small" style={{ marginBottom: 16 }}>
-            <TextArea
-              rows={4}
-              value={currentReport.approachProblemsEncountered}
-              onChange={(e) => updateReport('approachProblemsEncountered', e.target.value)}
-              placeholder="プロジェクト推進で生じた問題を記載..."
-            />
-          </Card>
-
-          <Card title="問題的改善對策" size="small" style={{ marginBottom: 16 }}>
-            <TextArea
-              rows={4}
-              value={currentReport.approachImprovementMeasures}
-              onChange={(e) => updateReport('approachImprovementMeasures', e.target.value)}
-              placeholder="問題に対する改善策を記載..."
-            />
-          </Card>
-
-          <Card title="專案的反思・學習" size="small" style={{ marginBottom: 16 }}>
-            <TextArea
-              rows={4}
-              value={currentReport.approachLessonsLearned}
-              onChange={(e) => updateReport('approachLessonsLearned', e.target.value)}
-              placeholder="プロジェクトの反省・学びを記載..."
-            />
-          </Card>
-
-          <Card title="最佳實踐" size="small" style={{ marginBottom: 16 }}>
-            <TextArea
-              rows={3}
-              value={currentReport.approachBestPractices}
-              onChange={(e) => updateReport('approachBestPractices', e.target.value)}
-              placeholder="本專案的最佳實踐與經驗分享..."
-            />
-          </Card>
-        </div>
-      )
-    },
-    {
-      key: 'resource',
-      label: 'Resource（資源）',
-      children: (
-        <div style={{ maxWidth: 1000 }}>
-          {/* 納期評估 - 計劃 vs 實績 */}
-          <Card title="納期評估（計劃 vs 實績）" size="small" style={{ marginBottom: 16 }}>
-            <Row gutter={[16, 16]}>
-              <Col span={8}></Col>
-              <Col span={8}><Text strong>計劃（予定）</Text></Col>
-              <Col span={8}><Text strong>實績</Text></Col>
-
-              <Col span={8}><Text strong>開始日期：</Text></Col>
-              <Col span={8}>
-                <DatePicker
-                  value={project.plannedStartDate ? dayjs(project.plannedStartDate) : null}
-                  disabled
-                  style={{ width: '100%', background: '#f5f5f5' }}
-                />
-              </Col>
-              <Col span={8}>
-                <DatePicker
-                  value={project.actualStartDate ? dayjs(project.actualStartDate) : null}
-                  disabled
-                  style={{ width: '100%', background: '#f5f5f5' }}
-                />
-              </Col>
-
-              <Col span={8}><Text strong>結束日期：</Text></Col>
-              <Col span={8}>
-                <DatePicker
-                  value={project.plannedEndDate ? dayjs(project.plannedEndDate) : null}
-                  disabled
-                  style={{ width: '100%', background: '#f5f5f5' }}
-                />
-              </Col>
-              <Col span={8}>
-                <DatePicker
-                  value={project.actualEndDate ? dayjs(project.actualEndDate) : null}
-                  disabled
-                  style={{ width: '100%', background: '#f5f5f5' }}
-                />
-              </Col>
-            </Row>
-
-            {hasDateVariance && (
-              <Alert
-                message="計劃與實績日期不同"
-                type="warning"
-                showIcon
-                style={{ marginTop: 16 }}
-              />
-            )}
-
-            <Divider />
-
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <Text strong>納期は最適だったか？</Text>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                納期の「予定」と「実績」が異なった場合、原因は何か？評估專案時程是否合理，以及實際與計劃的差異原因。
-              </Text>
-              <TextArea
-                rows={4}
-                value={currentReport.resourceScheduleAssessment}
-                onChange={(e) => updateReport('resourceScheduleAssessment', e.target.value)}
-                placeholder="例：納期は概ね最適であった。ただし、要件定義フェーズで追加要望があり、計劃より2週間延長した。原因は初期のスコープ定義が不十分であったため..."
-              />
-            </Space>
-          </Card>
-
-          {/* 成本評估 - 計劃 vs 實績 */}
-          <Card title="收益・成本評估（計劃 vs 實績）" size="small" style={{ marginBottom: 16 }}>
-            <Row gutter={[16, 8]}>
-              <Col span={6}></Col>
-              <Col span={9}><Text strong>計劃（予定）</Text></Col>
-              <Col span={9}><Text strong>實績</Text></Col>
-
-              <Col span={6}><Text strong>收入：</Text></Col>
-              <Col span={9}>
-                <InputNumber
-                  value={project.plannedRevenue}
-                  disabled
-                  style={{ width: '100%', background: '#f5f5f5' }}
-                  formatter={(v) => `¥ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                />
-              </Col>
-              <Col span={9}>
-                <InputNumber
-                  value={project.actualRevenue}
-                  disabled
-                  style={{ width: '100%', background: '#f5f5f5' }}
-                  formatter={(v) => `¥ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                />
-              </Col>
-
-              <Col span={6}><Text strong>支出：</Text></Col>
-              <Col span={9}>
-                <InputNumber
-                  value={project.plannedExpense}
-                  disabled
-                  style={{ width: '100%', background: '#f5f5f5' }}
-                  formatter={(v) => `¥ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                />
-              </Col>
-              <Col span={9}>
-                <InputNumber
-                  value={project.actualExpense}
-                  disabled
-                  style={{ width: '100%', background: '#f5f5f5' }}
-                  formatter={(v) => `¥ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                />
-              </Col>
-
-              <Col span={6}><Text strong>損益：</Text></Col>
-              <Col span={9}>
-                <InputNumber
-                  value={plannedProfit}
-                  disabled
-                  style={{ width: '100%', background: '#f5f5f5' }}
-                  formatter={(v) => `¥ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                />
-              </Col>
-              <Col span={9}>
-                <InputNumber
-                  value={actualProfit}
-                  disabled
-                  style={{
-                    width: '100%',
-                    background: '#f5f5f5',
-                    color: actualProfit >= 0 ? '#52c41a' : '#ff4d4f'
-                  }}
-                  formatter={(v) => `¥ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                />
-              </Col>
-            </Row>
-
-            <Divider />
-
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <Text strong>価値に応じた収益が得られたか、コストは最適だったか？</Text>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                評估收益是否符合創造的價值、成本控制是否合理、以及與計劃的差異原因。
-              </Text>
-              <TextArea
-                rows={4}
-                value={currentReport.resourceCostAssessment}
-                onChange={(e) => updateReport('resourceCostAssessment', e.target.value)}
-                placeholder="例：プロジェクトの価値に対して適切な収益を得られた。コストは計劃比で5%オーバーとなったが、追加機能の実装による付加価値を考慮すると妥当な範囲である..."
-              />
-            </Space>
-          </Card>
-
-          <Card title="資源限制" size="small" style={{ marginBottom: 16 }}>
-            <TextArea
-              rows={3}
-              value={currentReport.resourceConstraints}
-              onChange={(e) => updateReport('resourceConstraints', e.target.value)}
-              placeholder="專案執行過程中遇到的資源限制..."
-            />
-          </Card>
-        </div>
-      )
-    },
-    {
-      key: 'feedback',
-      label: '反饋與評估',
-      children: (
-        <div style={{ maxWidth: 1000 }}>
-          <Card title="客戶反饋" size="small" style={{ marginBottom: 16 }}>
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <div>
-                <Text>客戶滿意度評分：</Text>
-                <Rate
-                  value={currentReport.customerSatisfactionScore || 0}
-                  onChange={(v) => updateReport('customerSatisfactionScore', v)}
-                  style={{ marginLeft: 8 }}
-                />
-                <Text type="secondary" style={{ marginLeft: 8 }}>
-                  ({currentReport.customerSatisfactionScore || 0}/5)
-                </Text>
-              </div>
-              <TextArea
-                rows={4}
-                value={currentReport.customerFeedback}
-                onChange={(e) => updateReport('customerFeedback', e.target.value)}
-                placeholder="お客様からの評価・フィードバックを記載..."
-              />
-            </Space>
-          </Card>
-
-          <Card title="團隊反饋" size="small" style={{ marginBottom: 16 }}>
-            <TextArea
-              rows={4}
-              value={currentReport.teamFeedback}
-              onChange={(e) => updateReport('teamFeedback', e.target.value)}
-              placeholder="團隊成員的反饋與建議..."
-            />
-          </Card>
-
-          <Card title="組織・個人能力提升" size="small" style={{ marginBottom: 16 }}>
-            <TextArea
-              rows={4}
-              value={currentReport.organizationalImprovement}
-              onChange={(e) => updateReport('organizationalImprovement', e.target.value)}
-              placeholder="プロジェクトを通じて組織・個人の能力はどのように向上したか..."
-            />
-          </Card>
-        </div>
-      )
-    }
-  ];
-
   return (
-    <div>
+    <div style={{ maxWidth: 1200 }}>
       <Card
         style={{ marginBottom: 16 }}
         size="small"
@@ -475,7 +188,7 @@ export default function ProjectReportTab({ project, onChange }: Props) {
             <Space>
               <Text strong>報告類型：</Text>
               <Select
-                value={currentReport.reportType}
+                value={report.reportType}
                 onChange={(v) => updateReport('reportType', v)}
                 style={{ width: 150 }}
               >
@@ -485,7 +198,7 @@ export default function ProjectReportTab({ project, onChange }: Props) {
               </Select>
               <Text strong style={{ marginLeft: 16 }}>報告日期：</Text>
               <DatePicker
-                value={currentReport.reportDate ? dayjs(currentReport.reportDate) : null}
+                value={report.reportDate ? dayjs(report.reportDate) : null}
                 onChange={(date) => updateReport('reportDate', date?.format('YYYY-MM-DD'))}
               />
             </Space>
@@ -503,7 +216,364 @@ export default function ProjectReportTab({ project, onChange }: Props) {
         </Row>
       </Card>
 
-      <Tabs items={tabItems} size="large" />
+      <Tabs
+        defaultActiveKey="goal"
+        size="large"
+        items={[
+          {
+            key: 'goal',
+            label: 'Goal（目標）',
+            children: (
+              <div style={{ maxWidth: 1000 }}>
+                {/* 1. 價值創造與顧客滿意度 */}
+                <Card title="透過專案創造的價值與顧客滿意度為何？" size="small" style={{ marginBottom: 16 }}>
+                  <TextArea
+                    rows={4}
+                    value={report.goalValueCreated}
+                    onChange={(e) => updateReport('goalValueCreated', e.target.value)}
+                    placeholder="請記載透過專案創造的價值與顧客滿意度..."
+                  />
+                </Card>
+
+                {/* 2. 問題解決 */}
+                <Card title="專案中進行了什麼問題解決？" size="small" style={{ marginBottom: 16 }}>
+                  <TextArea
+                    rows={4}
+                    value={report.goalProblemSolved}
+                    onChange={(e) => updateReport('goalProblemSolved', e.target.value)}
+                    placeholder="請記載專案中進行的問題解決..."
+                  />
+                </Card>
+              </div>
+            )
+          },
+          {
+            key: 'approach',
+            label: 'Approach（方法）',
+            children: (
+              <div style={{ maxWidth: 1000 }}>
+                {/* 1. 顧客體驗 */}
+                <Card title="透過什麼樣的經驗・體驗來提供顧客滿意度？" size="small" style={{ marginBottom: 16 }}>
+                  <TextArea
+                    rows={4}
+                    value={report.approachMethod}
+                    onChange={(e) => updateReport('approachMethod', e.target.value)}
+                    placeholder="請記載透過什麼樣的經驗・體驗來提供顧客滿意度..."
+                  />
+                </Card>
+
+                {/* 2. 反思與改進 */}
+                <Card title="要做出更好的專案，應該怎麼做？下一個專案想要進一步處理的事項是什麼？" size="small" style={{ marginBottom: 16 }}>
+                  <TextArea
+                    rows={4}
+                    value={report.approachFutureImprovements}
+                    onChange={(e) => updateReport('approachFutureImprovements', e.target.value)}
+                    placeholder="請記載要做出更好的專案應該怎麼做，以及下一個專案想要進一步處理的事項..."
+                  />
+                </Card>
+              </div>
+            )
+          },
+          {
+            key: 'resource',
+            label: 'Resource（資源）',
+            children: (
+              <div style={{ maxWidth: 1000 }}>
+
+                {/* 1. 工時評估 */}
+                <Card title="工時評估（計劃 vs 實績）" size="small" style={{ marginBottom: 16 }}>
+                  <Table
+                    dataSource={[
+                      {
+                        key: '1',
+                        role: '總計',
+                        planned: project.totalPlannedHours || 0,
+                        actual: project.totalActualHours || 0,
+                      }
+                    ]}
+                    pagination={false}
+                    size="small"
+                    columns={[
+                      {
+                        title: '角色',
+                        dataIndex: 'role',
+                        key: 'role',
+                        width: 150,
+                      },
+                      {
+                        title: '計劃工時（小時）',
+                        dataIndex: 'planned',
+                        key: 'planned',
+                        width: 150,
+                        render: (v: number) => v.toFixed(1),
+                      },
+                      {
+                        title: '實際工時（小時）',
+                        dataIndex: 'actual',
+                        key: 'actual',
+                        width: 150,
+                        render: (v: number) => v.toFixed(1),
+                      },
+                      {
+                        title: '差異',
+                        key: 'variance',
+                        render: (_: any, record: any) => {
+                          const variance = record.actual - record.planned;
+                          return (
+                            <Text type={variance > 0 ? 'danger' : variance < 0 ? 'success' : undefined}>
+                              {variance > 0 ? '+' : ''}{variance.toFixed(1)}
+                            </Text>
+                          );
+                        },
+                      },
+                    ]}
+                  />
+
+                  <Divider />
+
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <Text strong>工時的「計劃」與「實績」若有不同，原因為何？</Text>
+                    <TextArea
+                      rows={3}
+                      value={report.resourceWorkHourAssessment}
+                      onChange={(e) => updateReport('resourceWorkHourAssessment', e.target.value)}
+                      placeholder="請記載工時的差異原因..."
+                    />
+                  </Space>
+                </Card>
+
+                {/* 2. 收益與成本評估 */}
+                <Card title="是否獲得符合價值的收益？成本是否最佳？" size="small" style={{ marginBottom: 16 }}>
+                  <Row gutter={[16, 8]} style={{ marginBottom: 16 }}>
+                    <Col span={6}><Text strong>項目</Text></Col>
+                    <Col span={9}><Text strong>計劃</Text></Col>
+                    <Col span={9}><Text strong>實績</Text></Col>
+
+                    <Col span={6}><Text>①收入</Text></Col>
+                    <Col span={9}>
+                      <InputNumber
+                        value={project.plannedRevenue}
+                        disabled
+                        style={{ width: '100%', background: '#f5f5f5' }}
+                        formatter={(v) => `¥ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                      />
+                    </Col>
+                    <Col span={9}>
+                      <InputNumber
+                        value={project.actualRevenue}
+                        disabled
+                        style={{ width: '100%', background: '#f5f5f5' }}
+                        formatter={(v) => `¥ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                      />
+                    </Col>
+
+                    <Col span={6}><Text>②支出</Text></Col>
+                    <Col span={9}>
+                      <InputNumber
+                        value={project.plannedExpense}
+                        disabled
+                        style={{ width: '100%', background: '#f5f5f5' }}
+                        formatter={(v) => `¥ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                      />
+                    </Col>
+                    <Col span={9}>
+                      <InputNumber
+                        value={project.actualExpense}
+                        disabled
+                        style={{ width: '100%', background: '#f5f5f5' }}
+                        formatter={(v) => `¥ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                      />
+                    </Col>
+
+                    <Col span={6}><Text>③損益（①-②）</Text></Col>
+                    <Col span={9}>
+                      <InputNumber
+                        value={plannedProfit}
+                        disabled
+                        style={{ width: '100%', background: '#f5f5f5' }}
+                        formatter={(v) => `¥ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                      />
+                    </Col>
+                    <Col span={9}>
+                      <InputNumber
+                        value={actualProfit}
+                        disabled
+                        style={{
+                          width: '100%',
+                          background: '#f5f5f5',
+                          color: actualProfit >= 0 ? '#52c41a' : '#ff4d4f'
+                        }}
+                        formatter={(v) => `¥ ${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                      />
+                    </Col>
+
+                    <Col span={6}><Text>④利益率（③/①）</Text></Col>
+                    <Col span={9}>
+                      <Input
+                        value={`${plannedProfitRate}%`}
+                        disabled
+                        style={{ width: '100%', background: '#f5f5f5' }}
+                      />
+                    </Col>
+                    <Col span={9}>
+                      <Input
+                        value={`${actualProfitRate}%`}
+                        disabled
+                        style={{ width: '100%', background: '#f5f5f5' }}
+                      />
+                    </Col>
+                  </Row>
+
+                  {hasFinancialVariance && (
+                    <Alert
+                      message="計劃與實績數據不同"
+                      type="info"
+                      showIcon
+                      style={{ marginBottom: 16 }}
+                    />
+                  )}
+
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <Text strong>①～④的「計劃」與「實績」若有不同，原因為何？</Text>
+                    <TextArea
+                      rows={3}
+                      value={report.resourceCostAssessment}
+                      onChange={(e) => updateReport('resourceCostAssessment', e.target.value)}
+                      placeholder="請記載收入、支出、損益、利益率的差異原因..."
+                    />
+                  </Space>
+                </Card>
+
+                {/* 2-2. 非人力成本明細 */}
+                {costSummary.total > 0 && (
+                  <Card title="非人力成本明細" size="small" style={{ marginBottom: 16 }}>
+                    <Row gutter={[16, 8]}>
+                      <Col span={12}><Text strong>類別</Text></Col>
+                      <Col span={12} style={{ textAlign: 'right' }}><Text strong>金額</Text></Col>
+
+                      <Col span={12}><Text>設備費用</Text></Col>
+                      <Col span={12} style={{ textAlign: 'right' }}>
+                        <Text>¥ {costSummary.EQUIPMENT.toLocaleString()}</Text>
+                      </Col>
+
+                      <Col span={12}><Text>消耗品</Text></Col>
+                      <Col span={12} style={{ textAlign: 'right' }}>
+                        <Text>¥ {costSummary.CONSUMABLE.toLocaleString()}</Text>
+                      </Col>
+
+                      <Col span={12}><Text>交通費</Text></Col>
+                      <Col span={12} style={{ textAlign: 'right' }}>
+                        <Text>¥ {costSummary.TRAVEL.toLocaleString()}</Text>
+                      </Col>
+
+                      <Col span={12}><Text>其他</Text></Col>
+                      <Col span={12} style={{ textAlign: 'right' }}>
+                        <Text>¥ {costSummary.OTHER.toLocaleString()}</Text>
+                      </Col>
+
+                      <Col span={24}><Divider style={{ margin: '12px 0' }} /></Col>
+
+                      <Col span={12}><Text strong>非人力成本合計</Text></Col>
+                      <Col span={12} style={{ textAlign: 'right' }}>
+                        <Text strong style={{ fontSize: 16, color: '#1890ff' }}>
+                          ¥ {costSummary.total.toLocaleString()}
+                        </Text>
+                      </Col>
+                    </Row>
+                  </Card>
+                )}
+
+                {/* 3. 納期評估 */}
+                <Card title="交期是否最佳？" size="small" style={{ marginBottom: 16 }}>
+                  <Row gutter={[16, 8]} style={{ marginBottom: 16 }}>
+                    <Col span={8}></Col>
+                    <Col span={8}><Text strong>計劃</Text></Col>
+                    <Col span={8}><Text strong>實績</Text></Col>
+
+                    <Col span={8}><Text>開始日期</Text></Col>
+                    <Col span={8}>
+                      <DatePicker
+                        value={project.plannedStartDate ? dayjs(project.plannedStartDate) : null}
+                        disabled
+                        style={{ width: '100%', background: '#f5f5f5' }}
+                      />
+                    </Col>
+                    <Col span={8}>
+                      <DatePicker
+                        value={project.actualStartDate ? dayjs(project.actualStartDate) : null}
+                        disabled
+                        style={{ width: '100%', background: '#f5f5f5' }}
+                      />
+                    </Col>
+
+                    <Col span={8}><Text>結束日期</Text></Col>
+                    <Col span={8}>
+                      <DatePicker
+                        value={project.plannedEndDate ? dayjs(project.plannedEndDate) : null}
+                        disabled
+                        style={{ width: '100%', background: '#f5f5f5' }}
+                      />
+                    </Col>
+                    <Col span={8}>
+                      <DatePicker
+                        value={project.actualEndDate ? dayjs(project.actualEndDate) : null}
+                        disabled
+                        style={{ width: '100%', background: '#f5f5f5' }}
+                      />
+                    </Col>
+                  </Row>
+
+                  {hasDateVariance && (
+                    <Alert
+                      message="計劃與實績日期不同"
+                      type="warning"
+                      showIcon
+                      style={{ marginBottom: 16 }}
+                    />
+                  )}
+
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <Text strong>交期的「計劃」與「實績」若有不同，原因為何？</Text>
+                    <TextArea
+                      rows={3}
+                      value={report.resourceScheduleAssessment}
+                      onChange={(e) => updateReport('resourceScheduleAssessment', e.target.value)}
+                      placeholder="請記載交期的差異原因..."
+                    />
+                  </Space>
+                </Card>
+              </div>
+            )
+          },
+          {
+            key: 'feedback',
+            label: 'Feedback（反饋）',
+            children: (
+              <div style={{ maxWidth: 1000 }}>
+                {/* 1. 能力提升 */}
+                <Card title="透過專案，組織・個人的能力如何提升？" size="small" style={{ marginBottom: 16 }}>
+                  <TextArea
+                    rows={4}
+                    value={report.organizationalImprovement}
+                    onChange={(e) => updateReport('organizationalImprovement', e.target.value)}
+                    placeholder="請記載透過專案，組織・個人的能力如何提升..."
+                  />
+                </Card>
+
+                {/* 2. 知識累積 */}
+                <Card title="是否累積了可在組織內廣泛應用的方法論或知識產權？" size="small" style={{ marginBottom: 16 }}>
+                  <TextArea
+                    rows={4}
+                    value={report.knowledgeAccumulation}
+                    onChange={(e) => updateReport('knowledgeAccumulation', e.target.value)}
+                    placeholder="請記載是否累積了可在組織內廣泛應用的方法論或知識產權..."
+                  />
+                </Card>
+              </div>
+            )
+          }
+        ]}
+      />
     </div>
   );
 }

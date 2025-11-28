@@ -20,11 +20,13 @@ interface ProjectReportAttributes {
   approachImprovementMeasures?: string;         // 改善措施
   approachLessonsLearned?: string;              // 經驗教訓
   approachBestPractices?: string;               // 最佳實踐
+  approachFutureImprovements?: string;          // もっと良いプロジェクトにするには、どうしたらよかったか？
 
   // Resource（資源）
-  resourceTeamStructure?: any;                  // 團隊結構 (JSON)
-  resourceScheduleAssessment?: string;          // 時程評估
-  resourceCostAssessment?: string;              // 成本評估
+  resourceTeamStructure?: any;                  // 團隊結構 (JSON) - どのように人材・時間を投入するか？
+  resourceScheduleAssessment?: string;          // 時程評估 - 納期の「予定」と「実績」が異なった場合、原因は何か？
+  resourceCostAssessment?: string;              // 成本評估 - ①～④の「予定」と「実績」が異なった場合、原因は何か？
+  resourceWorkHourAssessment?: string;          // 工數評估 - 工数の「予定」と「実績」が異なった場合、原因は何か？
   resourceUtilization?: any;                    // 資源利用率 (JSON)
   resourceConstraints?: string;                 // 資源限制
 
@@ -32,7 +34,8 @@ interface ProjectReportAttributes {
   customerFeedback?: string;                    // 客戶反饋
   customerSatisfactionScore?: number;           // 客戶滿意度評分 (1-5)
   teamFeedback?: string;                        // 團隊反饋
-  organizationalImprovement?: string;           // 組織改善
+  organizationalImprovement?: string;           // プロジェクトを通じて組織・個人の能力はどのように向上したか？
+  knowledgeAccumulation?: string;               // 組織的に広く活用できる方法論や知財が蓄積されたか？
 
   // Attachments
   attachments?: any;                            // 附件 (JSON)
@@ -64,11 +67,13 @@ class ProjectReport extends Model<ProjectReportAttributes, ProjectReportCreation
   public approachImprovementMeasures?: string;
   public approachLessonsLearned?: string;
   public approachBestPractices?: string;
+  public approachFutureImprovements?: string;
 
   // Resource
   public resourceTeamStructure?: any;
   public resourceScheduleAssessment?: string;
   public resourceCostAssessment?: string;
+  public resourceWorkHourAssessment?: string;
   public resourceUtilization?: any;
   public resourceConstraints?: string;
 
@@ -77,6 +82,7 @@ class ProjectReport extends Model<ProjectReportAttributes, ProjectReportCreation
   public customerSatisfactionScore?: number;
   public teamFeedback?: string;
   public organizationalImprovement?: string;
+  public knowledgeAccumulation?: string;
 
   public attachments?: any;
 
@@ -161,7 +167,12 @@ ProjectReport.init(
     approachBestPractices: {
       type: DataTypes.TEXT,
       allowNull: true,
-      comment: '最佳實踐'
+      comment: '組織的に広く活用できる方法論や知財が蓄積されたか？'
+    },
+    approachFutureImprovements: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: 'もっと良いプロジェクトにするには、どうしたらよかったか？次のプロジェクトで更に取り組みたいことは何か？'
     },
 
     // Resource（資源）
@@ -173,12 +184,17 @@ ProjectReport.init(
     resourceScheduleAssessment: {
       type: DataTypes.TEXT,
       allowNull: true,
-      comment: '納期は最適だったか'
+      comment: '納期の「予定」と「実績」が異なった場合、原因は何か？'
     },
     resourceCostAssessment: {
       type: DataTypes.TEXT,
       allowNull: true,
-      comment: '価値に応じた収益が得られたか、コストは最適だったか'
+      comment: '①～④の「予定」と「実績」が異なった場合、原因は何か？(売上/経費/損益/利益率)'
+    },
+    resourceWorkHourAssessment: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: '工数の「予定」と「実績」が異なった場合、原因は何か？'
     },
     resourceUtilization: {
       type: DataTypes.JSONB,
@@ -214,7 +230,12 @@ ProjectReport.init(
     organizationalImprovement: {
       type: DataTypes.TEXT,
       allowNull: true,
-      comment: 'プロジェクトを通じて組織・個人の能力はどのように向上するか'
+      comment: 'プロジェクトを通じて組織・個人の能力はどのように向上したか？'
+    },
+    knowledgeAccumulation: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: '組織的に広く活用できる方法論や知財が蓄積されたか？'
     },
 
     attachments: {
