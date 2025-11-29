@@ -53,6 +53,7 @@ interface User {
   fullName?: string;
   alias?: string;
   hourlyRate?: number;
+  role?: string;
 }
 
 // Section header component
@@ -776,10 +777,24 @@ export default function ProjectPlanTab({ project, onChange, isNew }: Props) {
               </Col>
               <Col span={8}><Text strong>審查人：</Text></Col>
               <Col span={16}>
-                <Input
+                <Select
                   value={project.reviewer}
-                  onChange={(e) => onChange('reviewer', e.target.value)}
-                />
+                  onChange={(v) => onChange('reviewer', v)}
+                  style={{ width: '100%' }}
+                  placeholder="選擇審查人"
+                  allowClear
+                  showSearch
+                  optionFilterProp="children"
+                  loading={loadingUsers}
+                >
+                  {users
+                    .filter(user => user.role === 'admin')
+                    .map(user => (
+                      <Select.Option key={user.id} value={user.alias || user.fullName || user.username}>
+                        {user.alias || user.fullName || user.username}
+                      </Select.Option>
+                    ))}
+                </Select>
               </Col>
             </Row>
           </Col>

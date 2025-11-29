@@ -11,7 +11,7 @@ router.use(authenticate);
 router.get('/list', async (req: AuthRequest, res: Response) => {
   try {
     const users = await User.findAll({
-      attributes: ['id', 'username', 'email', 'fullName', 'alias'],
+      attributes: ['id', 'username', 'email', 'fullName', 'alias', 'role'],
       where: { isActive: true },
       order: [['alias', 'ASC'], ['fullName', 'ASC'], ['username', 'ASC']]
     });
