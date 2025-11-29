@@ -1,6 +1,8 @@
 import { Response } from 'express';
 import { Op } from 'sequelize';
 import Project from '../models/Project';
+import ProjectMember from '../models/ProjectMember';
+import User from '../models/User';
 import { AppError } from '../middleware/error.middleware';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { logActivity, ActivityActions, EntityTypes } from '../services/activityLog.service';
@@ -139,6 +141,21 @@ export const createProject = async (req: AuthRequest, res: Response): Promise<vo
     };
 
     const project = await Project.create(projectData);
+
+    // Automatically add the creator as PM member
+    if (req.user?.id) {
+      const creator = await User.findByPk(req.user.id);
+      if (creator) {
+        await ProjectMember.create({
+          projectId: project.id,
+          role: 'PM',
+          memberName: creator.alias || creator.username,
+          memberEmail: creator.email,
+          hourlyRate: creator.hourlyRate || undefined,
+          sortOrder: 0
+        });
+      }
+    }
 
     // Log activity
     await logActivity({

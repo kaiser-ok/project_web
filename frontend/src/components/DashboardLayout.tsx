@@ -49,6 +49,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         label: '成員管理',
       },
       {
+        key: '/admin/roles',
+        icon: <SettingOutlined />,
+        label: '角色管理',
+      },
+      {
         key: '/admin/activity-logs',
         icon: <FileTextOutlined />,
         label: '操作紀錄',

@@ -3,6 +3,7 @@ import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { ProjectCostItem } from '../models';
 import { Op } from 'sequelize';
 import dayjs from 'dayjs';
+import { logActivity, ActivityActions, EntityTypes } from '../services/activityLog.service';
 
 const router = Router();
 
@@ -113,6 +114,17 @@ router.post('/', async (req: AuthRequest, res: Response) => {
       createdBy: req.user?.id
     });
 
+    // Log activity
+    await logActivity({
+      userId: req.user!.id,
+      action: ActivityActions.COST_CREATE,
+      entityType: EntityTypes.COST,
+      entityId: costItem.id,
+      entityName: description,
+      details: { projectId, amount, category, month },
+      req
+    });
+
     res.status(201).json({
       success: true,
       data: costItem
@@ -159,6 +171,17 @@ router.put('/:id', async (req: AuthRequest, res: Response) => {
 
     await costItem.update(updates);
 
+    // Log activity
+    await logActivity({
+      userId: req.user!.id,
+      action: ActivityActions.COST_UPDATE,
+      entityType: EntityTypes.COST,
+      entityId: costItem.id,
+      entityName: costItem.description,
+      details: { projectId: costItem.projectId, amount, category, month: updates.month || costItem.month },
+      req
+    });
+
     res.json({
       success: true,
       data: costItem
@@ -180,6 +203,17 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
       res.status(404).json({ error: 'Cost item not found' });
       return;
     }
+
+    // Log activity before deletion
+    await logActivity({
+      userId: req.user!.id,
+      action: ActivityActions.COST_DELETE,
+      entityType: EntityTypes.COST,
+      entityId: costItem.id,
+      entityName: costItem.description,
+      details: { projectId: costItem.projectId, amount: costItem.amount, category: costItem.category, month: costItem.month },
+      req
+    });
 
     await costItem.destroy();
 

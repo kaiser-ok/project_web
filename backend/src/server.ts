@@ -19,6 +19,7 @@ import dashboardRoutes from './routes/dashboard.routes';
 import taskWorkHourRoutes from './routes/taskWorkHour.routes';
 import reportRoutes from './routes/report.routes';
 import costRoutes from './routes/cost.routes';
+import roleRoutes from './routes/role.routes';
 import { errorHandler } from './middleware/error.middleware';
 
 // Load environment variables
@@ -71,6 +72,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/task-work-hours', taskWorkHourRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/costs', costRoutes);
+app.use('/api/roles', roleRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {

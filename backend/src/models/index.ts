@@ -8,6 +8,7 @@ import TaskWorkHour from './TaskWorkHour';
 import ActivityLog from './ActivityLog';
 import ProjectReport from './ProjectReport';
 import ProjectCostItem from './ProjectCostItem';
+import Role from './Role';
 
 // Define associations
 User.hasMany(ActivityLog, { foreignKey: 'userId', as: 'activityLogs' });
@@ -47,5 +48,6 @@ export {
   TaskWorkHour,
   ActivityLog,
   ProjectReport,
-  ProjectCostItem
+  ProjectCostItem,
+  Role
 };

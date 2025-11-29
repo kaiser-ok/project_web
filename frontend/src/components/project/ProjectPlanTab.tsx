@@ -46,6 +46,15 @@ interface ProjectMember {
   plannedHours?: number;
 }
 
+interface User {
+  id: number;
+  username: string;
+  email: string;
+  fullName?: string;
+  alias?: string;
+  hourlyRate?: number;
+}
+
 // Section header component
 const SectionHeader = ({ icon, title, color, bgColor }: { icon: React.ReactNode; title: string; color: string; bgColor: string }) => (
   <div style={{
@@ -76,6 +85,8 @@ export default function ProjectPlanTab({ project, onChange, isNew }: Props) {
   const [memberModalVisible, setMemberModalVisible] = useState(false);
   const [editingMember, setEditingMember] = useState<ProjectMember | null>(null);
   const [memberForm] = Form.useForm();
+  const [users, setUsers] = useState<User[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
 
   const plannedProfit = (project.plannedRevenue || 0) - (project.plannedExpense || 0);
   const plannedProfitRate = project.plannedRevenue
@@ -102,6 +113,23 @@ export default function ProjectPlanTab({ project, onChange, isNew }: Props) {
     }
   }, [project.id, fetchMembers]);
 
+  // Fetch users list
+  const fetchUsers = useCallback(async () => {
+    setLoadingUsers(true);
+    try {
+      const response = await api.get('/users/list');
+      setUsers(response.data?.data || []);
+    } catch (error) {
+      console.error('Failed to fetch users:', error);
+    } finally {
+      setLoadingUsers(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
   // Member CRUD operations
   const handleAddMember = () => {
     setEditingMember(null);
@@ -126,6 +154,16 @@ export default function ProjectPlanTab({ project, onChange, isNew }: Props) {
     }
   };
 
+  const handleUserSelect = (userId: number) => {
+    const selectedUser = users.find(u => u.id === userId);
+    if (selectedUser) {
+      memberForm.setFieldsValue({
+        memberName: selectedUser.alias || selectedUser.username,
+        memberEmail: selectedUser.email
+      });
+    }
+  };
+
   const handleSaveMember = async () => {
     try {
       const values = await memberForm.validateFields();
@@ -141,6 +179,46 @@ export default function ProjectPlanTab({ project, onChange, isNew }: Props) {
     } catch (error) {
       console.error('Failed to save member:', error);
       message.error('儲存成員失敗');
+    }
+  };
+
+  // Handle start date change
+  const handleStartDateChange = (date: dayjs.Dayjs | null) => {
+    const startDate = date?.format('YYYY-MM-DD');
+    onChange('plannedStartDate', startDate);
+
+    // If duration is set, calculate end date
+    if (date && project.plannedDurationMonths) {
+      const endDate = date.add(project.plannedDurationMonths, 'month').format('YYYY-MM-DD');
+      onChange('plannedEndDate', endDate);
+    }
+    // If end date is set, calculate duration
+    else if (date && project.plannedEndDate) {
+      const months = dayjs(project.plannedEndDate).diff(date, 'month', true);
+      onChange('plannedDurationMonths', Math.round(months * 10) / 10);
+    }
+  };
+
+  // Handle end date change
+  const handleEndDateChange = (date: dayjs.Dayjs | null) => {
+    const endDate = date?.format('YYYY-MM-DD');
+    onChange('plannedEndDate', endDate);
+
+    // If start date is set, calculate duration
+    if (date && project.plannedStartDate) {
+      const months = date.diff(dayjs(project.plannedStartDate), 'month', true);
+      onChange('plannedDurationMonths', Math.round(months * 10) / 10);
+    }
+  };
+
+  // Handle duration change
+  const handleDurationChange = (duration: number | null) => {
+    onChange('plannedDurationMonths', duration);
+
+    // If start date is set, calculate end date
+    if (duration && project.plannedStartDate) {
+      const endDate = dayjs(project.plannedStartDate).add(duration, 'month').format('YYYY-MM-DD');
+      onChange('plannedEndDate', endDate);
     }
   };
 
@@ -365,7 +443,7 @@ export default function ProjectPlanTab({ project, onChange, isNew }: Props) {
               <Col span={14}>
                 <DatePicker
                   value={project.plannedStartDate ? dayjs(project.plannedStartDate) : null}
-                  onChange={(d) => onChange('plannedStartDate', d?.format('YYYY-MM-DD'))}
+                  onChange={handleStartDateChange}
                   style={{ width: '100%' }}
                 />
               </Col>
@@ -373,7 +451,7 @@ export default function ProjectPlanTab({ project, onChange, isNew }: Props) {
               <Col span={14}>
                 <DatePicker
                   value={project.plannedEndDate ? dayjs(project.plannedEndDate) : null}
-                  onChange={(d) => onChange('plannedEndDate', d?.format('YYYY-MM-DD'))}
+                  onChange={handleEndDateChange}
                   style={{ width: '100%' }}
                 />
               </Col>
@@ -381,9 +459,11 @@ export default function ProjectPlanTab({ project, onChange, isNew }: Props) {
               <Col span={14}>
                 <InputNumber
                   value={project.plannedDurationMonths}
-                  onChange={(v) => onChange('plannedDurationMonths', v)}
+                  onChange={handleDurationChange}
                   style={{ width: '100%' }}
                   addonAfter="個月"
+                  min={0}
+                  step={0.5}
                 />
               </Col>
             </Row>
@@ -536,21 +616,14 @@ export default function ProjectPlanTab({ project, onChange, isNew }: Props) {
                 title: 'Email',
                 dataIndex: 'memberEmail',
                 key: 'memberEmail',
-                width: 180,
-                render: (value: string) => value || '-',
-              },
-              {
-                title: '職級',
-                dataIndex: 'memberClass',
-                key: 'memberClass',
-                width: 100,
+                width: 200,
                 render: (value: string) => value || '-',
               },
               {
                 title: '工數',
                 dataIndex: 'plannedHours',
                 key: 'plannedHours',
-                width: 100,
+                width: 120,
                 align: 'right' as const,
                 render: (value: number) => value ? `${Number(value).toLocaleString()} h` : '-',
               },
@@ -618,21 +691,34 @@ export default function ProjectPlanTab({ project, onChange, isNew }: Props) {
           </Form.Item>
 
           <Form.Item
+            name="userId"
+            label="專案成員"
+            rules={[{ required: !editingMember, message: '請選擇專案成員' }]}
+          >
+            <Select
+              placeholder="請選擇人員"
+              loading={loadingUsers}
+              onChange={handleUserSelect}
+              disabled={!!editingMember}
+              showSearch
+              optionFilterProp="children"
+              filterOption={(input, option) =>
+                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+              options={users.map(user => ({
+                label: `${user.alias || user.username} (${user.email})`,
+                value: user.id
+              }))}
+              autoComplete="off"
+            />
+          </Form.Item>
+
+          <Form.Item
             name="memberName"
             label="別名"
-            rules={[{ required: true, message: '請輸入別名' }]}
+            hidden
           >
-            <Input
-              placeholder="輸入別名"
-              onChange={(e) => {
-                const alias = e.target.value;
-                if (alias) {
-                  memberForm.setFieldValue('memberEmail', `${alias}@gentrice.net`);
-                } else {
-                  memberForm.setFieldValue('memberEmail', '');
-                }
-              }}
-            />
+            <Input />
           </Form.Item>
 
           <Form.Item
@@ -641,24 +727,9 @@ export default function ProjectPlanTab({ project, onChange, isNew }: Props) {
           >
             <Input
               disabled
-              placeholder="自動產生"
+              placeholder="選擇成員後自動填入"
               style={{ background: '#f5f5f5' }}
             />
-          </Form.Item>
-
-          <Form.Item
-            name="memberClass"
-            label="職級"
-          >
-            <Select placeholder="選擇職級" allowClear>
-              <Select.Option value="C1">C1</Select.Option>
-              <Select.Option value="C2">C2</Select.Option>
-              <Select.Option value="C3">C3</Select.Option>
-              <Select.Option value="M1">M1</Select.Option>
-              <Select.Option value="M2">M2</Select.Option>
-              <Select.Option value="S1">S1</Select.Option>
-              <Select.Option value="S2">S2</Select.Option>
-            </Select>
           </Form.Item>
 
           <Form.Item

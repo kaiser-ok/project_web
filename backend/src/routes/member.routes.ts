@@ -14,7 +14,32 @@ router.get('/project/:projectId', async (req: AuthRequest, res: Response) => {
       where: { projectId },
       order: [['sortOrder', 'ASC'], ['id', 'ASC']]
     });
-    res.json({ success: true, data: members });
+
+    // Calculate total work hours for each member
+    const membersWithHours = await Promise.all(
+      members.map(async (member) => {
+        const workHours = await ProjectWorkHour.findAll({
+          where: { memberId: member.id }
+        });
+
+        const totalPlannedHours = workHours.reduce(
+          (sum, wh) => sum + Number(wh.plannedHours || 0),
+          0
+        );
+        const totalActualHours = workHours.reduce(
+          (sum, wh) => sum + Number(wh.actualHours || 0),
+          0
+        );
+
+        return {
+          ...member.toJSON(),
+          plannedHours: totalPlannedHours,
+          actualHours: totalActualHours
+        };
+      })
+    );
+
+    res.json({ success: true, data: membersWithHours });
   } catch (error) {
     console.error('Get members error:', error);
     res.status(500).json({ error: 'Failed to get members' });

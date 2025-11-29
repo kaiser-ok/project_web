@@ -35,6 +35,7 @@ interface User {
   fullName?: string;
   alias?: string;
   role: 'admin' | 'manager' | 'member' | 'viewer';
+  hourlyRate?: number;
   avatar?: string;
   isActive: boolean;
   lastLoginAt?: string;
@@ -88,6 +89,7 @@ export default function UserManagementPage() {
     form.setFieldsValue({
       alias: user.alias || '',
       role: user.role,
+      hourlyRate: user.hourlyRate,
       isActive: user.isActive,
     });
     setEditModalVisible(true);
@@ -159,6 +161,13 @@ export default function UserManagementPage() {
       render: (role: string) => (
         <Tag color={roleColors[role]}>{roleLabels[role]}</Tag>
       ),
+    },
+    {
+      title: '預設時薪',
+      dataIndex: 'hourlyRate',
+      key: 'hourlyRate',
+      width: 120,
+      render: (value: number) => value ? `NT$ ${Number(value).toLocaleString()}` : '-',
     },
     {
       title: '狀態',
@@ -278,6 +287,22 @@ export default function UserManagementPage() {
             </Form.Item>
 
             <Form.Item
+              name="hourlyRate"
+              label="預設時薪"
+              extra="用於計算專案人事成本，單位：新台幣"
+              rules={[
+                { type: 'number', min: 0, message: '時薪必須大於等於 0' }
+              ]}
+            >
+              <Input
+                type="number"
+                placeholder="輸入時薪"
+                prefix="NT$"
+                min={0}
+              />
+            </Form.Item>
+
+            <Form.Item
               name="isActive"
               label="帳號狀態"
               valuePropName="checked"
@@ -337,6 +362,22 @@ export default function UserManagementPage() {
                 <Select.Option value="member">成員</Select.Option>
                 <Select.Option value="viewer">檢視者</Select.Option>
               </Select>
+            </Form.Item>
+
+            <Form.Item
+              name="hourlyRate"
+              label="預設時薪"
+              extra="用於計算專案人事成本，單位：新台幣（選填）"
+              rules={[
+                { type: 'number', min: 0, message: '時薪必須大於等於 0' }
+              ]}
+            >
+              <Input
+                type="number"
+                placeholder="輸入時薪（選填）"
+                prefix="NT$"
+                min={0}
+              />
             </Form.Item>
           </Form>
           <Text type="secondary">

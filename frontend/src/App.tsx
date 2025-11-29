@@ -8,6 +8,7 @@ import ProjectsPage from './pages/ProjectsPage';
 import ProjectDetailPage from './pages/ProjectDetailPage';
 import UserManagementPage from './pages/UserManagementPage';
 import ActivityLogPage from './pages/ActivityLogPage';
+import RoleManagementPage from './pages/RoleManagementPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import dayjs from 'dayjs';
 import 'dayjs/locale/zh-tw';
@@ -68,6 +69,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <ActivityLogPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/roles"
+              element={
+                <ProtectedRoute>
+                  <RoleManagementPage />
                 </ProtectedRoute>
               }
             />

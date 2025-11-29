@@ -68,9 +68,17 @@ export const ActivityActions = {
   REPORT_UPDATE: 'report_update',
   REPORT_DELETE: 'report_delete',
 
+  // Cost
+  COST_CREATE: 'cost_create',
+  COST_UPDATE: 'cost_update',
+  COST_DELETE: 'cost_delete',
+
   // User Management
   USER_UPDATE: 'user_update',
-  USER_ROLE_CHANGE: 'user_role_change'
+  USER_ROLE_CHANGE: 'user_role_change',
+
+  // Role Management
+  ROLE_UPDATE: 'role_update'
 };
 
 export const EntityTypes = {
@@ -80,5 +88,7 @@ export const EntityTypes = {
   MEMBER: 'member',
   FINANCE: 'finance',
   WORKHOUR: 'workhour',
-  PROJECT_REPORT: 'project_report'
+  PROJECT_REPORT: 'project_report',
+  COST: 'cost',
+  ROLE: 'role'
 };
